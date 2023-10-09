@@ -25,7 +25,7 @@ I like the nighttime
 
 Then in your zig code, you can create a new struct type from that text file, which has fields as defined in the text file above, filled in the static strings as defined in the file between the .directives.
 
-```java
+```zig
 const zts = @import("zts");
 
 const my_foobar = zts.embed("foobar.txt"){}; // this returns an instance of a new foobar struct type
@@ -47,7 +47,7 @@ If you mess up your template file, or your zig code ... Zig will pick that up at
 
 for example, if you add this to the code above :
 
-```java
+```zig
 ...
 std.debug.print("{s}\n", my_foobar.header); // compile error as the .header directive doesnt exist in the template file !
 ```
@@ -93,7 +93,7 @@ Using the HTML template that looks something like this :
 ```
 
 In your zig code :
-```
+```zig
 const zts = @import("zts");
 
 // lets use it in a web request handler
