@@ -1,6 +1,10 @@
 # ZTS
 
-Zig Templates made Simple
+Currently published under the `DTT` Licence (Dont Touch This), because its not baked yet !!
+
+Please wait for v0.0.1
+
+# Zig Templates made Simple (ZTS)
 
 ![zts](https://github.com/zigster64/zts/blob/main/docs/zts.jpg?raw=true)
 
@@ -10,10 +14,7 @@ Its all done at comptime, so there is no runtime overhead for parsing or allocat
 
 There is no funky new templating syntax to apply either, its just Zig, and nothing but Zig.
 
-
 As a HTML templating util, this covers a lot of bases, and provides a pretty sane DX, with compile time template validation, and the ability to apply fine grained format control to structured fields.
-
-Embarrassing part is that its under 100 lines of code to implement ... including comments and tests. Hmmm.
 
 Lets have a look ...
 
@@ -181,6 +182,8 @@ Syntactically, the `.directive` in the template must obey these rules :
 Any lines that do not obey all of the above rules are considered as content, and not a directive.
 
 Even then, things can get messy if the content that you are wrapping in a template happens to also happens to include text that obeys these rules.
+
+(TODO - add an alternative directive as descibed here)
 
 In that case, you can use the alternative HTML-esque `<# directive />` syntax to create a templating directive in your file. 
 
