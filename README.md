@@ -2,15 +2,13 @@
 
 Zig Templates made Simple
 
-A utility lib that uses Zig's comptime power to make a dead simple and pretty efficient templating engine.
-
+A utility lib that uses Zig's comptime power to make a dead simple and pretty efficient text templating engine.
 
 Its all done at comptime, so there is no runtime overhead for parsing or allocation, no code generation.
 
-Is all just zig end-to-end, so there is no funky new templating syntax to apply either.
+There is no funky new templating syntax to apply either, its just Zig, and nothing but Zig.
 
 Lets have a look ...
-
 
 ## Very Basic Example
 
@@ -43,19 +41,33 @@ std.debug.print("{s}\n", my_foobar.bar);
 
 Thats really all there is to it.
 
-If you mess up your template file, or your zig code ... Zig will pick that up at compile time, and throw an error about missing struct fields, rather than catching it at runtime.
+If your template file and your Zig code get out of sync due to ongoing changes, nothing to fear ... Zig will pick that up at compile time, and throw an error about missing struct fields, rather than discovering a template bug at runtime.
 
 for example, if you add this to the code above :
 
 ```zig
-...
 std.debug.print("{s}\n", my_foobar.header); // compile error as the .header directive doesnt exist in the template file !
+```
+
+In addition to having fields `.foo` and `.bar`, the templated type also has an automatic field named `.all` which contains the entire content, stripped of directives.
+
+eg: 
+```zig
+std.debug.print("{s}\n", .{my_foobar.all});
+```
+
+will output :
+```
+I prefer daytime
+I like the nighttime
 ```
 
 ## A more common HTML templating example
 
-Lets define a typical HTML file, with segments defined, and add some places where we can print 
-Using the HTML template that looks something like this :
+Lets define a typical HTML file, with template segments defined, and add some places where we can print structured data that we pass through the template.
+
+The HTML template looks like this :
+
 ```html
 .details
 <div>
@@ -92,11 +104,10 @@ Using the HTML template that looks something like this :
 
 ```
 
-In your zig code :
+And the Zig code to print through the template looks like this :
 ```zig
 const zts = @import("zts");
 
-// lets use it in a web request handler
 fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 
     var html = zts.embed("html/customer_details.html"); 
@@ -121,6 +132,32 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 Its quite simple - the ZTS templating engine simply splits the input file into segments delimited by .directives
 
 Then using the awesome power of Zig's comptime `fmt.print()` - you can pass structs to the print statement, and then use the `{[fieldname]:format}` syntax to derefence fields out of the struct, and apply standard formatting to them.
+
+## Segmented vs Non-Segmented Templates
+
+A template is considered to be segmented into fields IF the very first character in the file is `.` AND the first line contains no whitespaces.
+
+In other words - the first line is a valid template `.directive`
+
+If the file is seen to be segmented, then the returned struct will contain fields matching each segment.
+
+If the file is NOT segmented, then the returned struct will contain only 1 field, named `all`, which contains the entire template.
+
+example template `foobar.txt`
+
+```
+Foo prefers the daytime
+Bar prefers the nighttime
+```
+
+Zig code that uses the template
+```zig
+var data = zts.embed("foobar.txt"){}
+std.debug.print("I am foobar, and I only have 1 field  {s}\n", .{data.all});
+```
+
+NOTE that segmented data also has the `.all` field, which contains the complete template contents, stripped of `.directives`
+
 
 ## Segment Declaration Syntax
 
