@@ -2,13 +2,21 @@
 
 Zig Templates made Simple
 
+![zts](https://github.com/zigster64/zts/blob/main/docs/zts.jpg?raw=true)
+
 A utility lib that uses Zig's comptime power to make a dead simple and pretty efficient text templating engine.
 
 Its all done at comptime, so there is no runtime overhead for parsing or allocation, no code generation.
 
 There is no funky new templating syntax to apply either, its just Zig, and nothing but Zig.
 
+
+As a HTML templating util, this covers a lot of bases, and provides a pretty sane DX, with compile time template validation, and the ability to apply fine grained format control to structured fields.
+
+Embarrassing part is that its under 100 lines of code to implement ... including comments and tests. Hmmm.
+
 Lets have a look ...
+
 
 ## Very Basic Example
 
