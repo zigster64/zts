@@ -3,7 +3,7 @@
   <h1>Customer</h1>
   <p>Name: {[name]s}</p>
   <p>Address: {[address]s}</p>
-  <p>Credit Limit: $ -[credit]d-</p>
+  <p>Credit Limit: $ {[credit]d:.2}-</p>
 
   .invoice_table
   <h2>Invoices</h2>
@@ -18,14 +18,14 @@
     <tr>
       <td>{[date]s}</td>
       <td>{[details]s}</td>
-      <td>$ {[amount]:.2}</td>
+      <td>$ {[amount]d:.2}</td>
     </tr>
 
     .invoice_total
     <tr>
       <td></td>
       <td>Total Due:</td>
-      <td>$ {[total]:.2}</td>
+      <td>$ {[total]d:.2}</td>
     </tr>
 
   </table>

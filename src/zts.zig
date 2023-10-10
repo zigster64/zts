@@ -1,29 +1,33 @@
 const std = @import("std");
 
-fn load(comptime path: []const u8) type {
-    return template(@embedFile(path));
-}
-
 const Mode = enum {
     find_directive,
     reading_directive_name,
     content_line,
 };
 
-fn template(comptime str: []const u8) type {
+fn Template(comptime path: []const u8) type {
     @setEvalBranchQuota(500000);
+    const str = @embedFile(path);
     const decls = &[_]std.builtin.Type.Declaration{};
 
     // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
     if (str.len < 1 or str[0] != '.') {
         // @compileLog("file is not a template");
         var fields: [1]std.builtin.Type.StructField = undefined;
+
+        // NOTE - tried doing this as well. Seems closer ... but is segfaulting all over the place
+        // maybe persist with this path
+        // .type = *const [str.len:0]u8
+        // .default_value = str
+
         fields[0] = .{
             .name = "all",
             .type = [str.len]u8,
             .is_comptime = true,
             .alignment = 0,
-            .default_value = str[0..],
+            .default_value = str[0..], // << this is fine for instantiating one of these types and using the default value
+            // BUT ... that instance doesnt like being used as a comptime []u8 for print()
         };
         // @compileLog("non-template using fields", fields);
         return @Type(.{
@@ -168,19 +172,20 @@ fn template(comptime str: []const u8) type {
 
 test "all" {
     var out = std.io.getStdErr().writer();
-    const t = load("testdata/all.txt");
+    const t = Template("testdata/all.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        try out.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
+        try out.print("all.txt has field {} name {s} type {} is comptime {} default {?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
     }
-    const data = t{};
-    try out.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
-    // try out.print(&data.all, .{});
+    comptime var data = Template("testdata/all.txt"){};
+    try out.print("typeof data.all is {}\n", .{@TypeOf(data.all)});
+    try out.print("value data.all is:\n{s}\n", .{data.all});
+    // try out.print(data.all, .{});
     try std.testing.expectEqual(57, data.all.len);
 }
 
 test "foobar" {
     var out = std.io.getStdErr().writer();
-    const t = load("testdata/foobar.txt");
+    const t = Template("testdata/foobar.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
     }
@@ -196,7 +201,7 @@ test "foobar" {
 
 test "edge-phantom-directive" {
     var out = std.io.getStdErr().writer();
-    const t = load("testdata/edge-phantom-directive.txt");
+    const t = Template("testdata/edge-phantom-directive.txt");
 
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         try out.print("type has field {} name {s} type {}\n", .{ i, f.name, f.type });
@@ -239,7 +244,7 @@ test "customer_details" {
     _ = cust;
 
     var out = std.io.getStdErr().writer();
-    const html_t = load("testdata/customer_details.html");
+    const html_t = Template("testdata/customer_details.html");
 
     inline for (@typeInfo(html_t).Struct.fields, 0..) |f, i| {
         try out.print("html has field {} name {s} type {}\n", .{ i, f.name, f.type });
@@ -247,33 +252,39 @@ test "customer_details" {
 
     const html = html_t{};
 
+    // do some basic tests on this loaded template
+    // these are all fine
+    try std.testing.expectEqual(517, html.all.len);
+
     try out.writeAll("------ details template -------\n");
     try out.print("{s}", .{html.details});
+    try std.testing.expectEqual(126, html.details.len);
     try out.writeAll("------ invoice_table template -------\n");
     try out.print("{s}", .{html.invoice_table});
+    try std.testing.expectEqual(119, html.invoice_table.len);
     try out.writeAll("------ invoice_row template -------\n");
     try out.print("{s}", .{html.invoice_row});
+    try std.testing.expectEqual(109, html.invoice_row.len);
     try out.writeAll("------ invoice_row total -------\n");
     try out.print("{s}", .{html.invoice_total});
+    try std.testing.expectEqual(112, html.invoice_total.len);
     try out.writeAll("\n-------------------------------\n");
 
-    try out.print("typeof html_t {any}\n", .{@TypeOf(html_t)});
-    try out.print("typeof html {any}\n", .{@TypeOf(html)});
-    //try out.print(&html.invoice_table, .{}); // has no expansions
+    // IRL, should be able to use this template and the provided data like this to generate
+    // a populated HTML page out of the segments
 
     // try out.print(&html.details, .{
     //     .name = cust.name,
     //     .address = cust.address,
     //     .credit = cust.credit,
     // });
-    try out.writeAll("----------------------\n");
 
-    // try out.print(&html.details, cust);
     // try out.writeAll(&html.invoice_table_start);
     // var total: f32 = 0;
+
     // for (cust.invoices) |invoice| {
-    // try out.print(&html.invoice_row, invoice);
-    // total += invoice.amount;
+    //     try out.print(&html.invoice_row, invoice);
+    //     total += invoice.amount;
     // }
 
     // try out.print(&html.invoice_table_total, .{ .total = total });
