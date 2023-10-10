@@ -58,7 +58,7 @@ for example, if you add this to the code above :
 std.debug.print("{s}\n", my_foobar.header); // compile error as the .header directive doesnt exist in the template file !
 ```
 
-In addition to having fields `.foo` and `.bar`, the templated type also has an automatic field named `.all` which contains the entire content, stripped of directives.
+In addition to having fields `.foo` and `.bar`, the templated type also has an automatic field named `.all` which contains the entire content, including any directives.
 
 eg: 
 ```zig
@@ -165,7 +165,7 @@ var data = zts.embed("foobar.txt"){}
 std.debug.print("I am foobar, and I only have 1 field  {s}\n", .{data.all});
 ```
 
-NOTE that segmented data also has the `.all` field, which contains the complete template contents, stripped of `.directives`
+NOTE that segmented data also has the `.all` field, which contains the complete template contents, including any `.directives`
 
 
 ## Segment Declaration Syntax
