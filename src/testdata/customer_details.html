@@ -1,9 +1,9 @@
 .details
 <div>
     <h1>Customer</h1>
-    <p>Name: {[name]:s}</p>
-    <p>Address: {[address]:s}</p>
-    <p>Credit Limit: $ {[credit]:.2}</p>
+    <p>Name: {[name]s}</p>
+    <p>Address: {[address]s}</p>
+    <p>Credit Limit: $ {[credit]d}</p>
 
     .invoice_table
     <h2>Invoices</h2>
@@ -16,8 +16,8 @@
 
         .invoice_row
         <tr>
-            <td>{[date]:s}</td>
-            <td>{[details]:s}</td>
+            <td>{[date]s}</td>
+            <td>{[details]s}</td>
             <td>$ {[amount]:.2}</td>
         </tr>
 

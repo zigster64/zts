@@ -11,7 +11,7 @@ const Mode = enum {
 };
 
 fn template(comptime str: []const u8) type {
-    // @setEvalBranchQuota(10000);
+    @setEvalBranchQuota(500000);
     const decls = &[_]std.builtin.Type.Declaration{};
 
     // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
@@ -25,6 +25,7 @@ fn template(comptime str: []const u8) type {
             .alignment = 0,
             .default_value = str[0..],
         };
+        // @compileLog("non-template using fields", fields);
         return @Type(.{
             .Struct = .{
                 .layout = .Auto,
@@ -92,7 +93,7 @@ fn template(comptime str: []const u8) type {
     // so now we need to loop through the whole parser a 2nd time to get the field details
     mode = .find_directive;
     inline for (str, 0..) |c, index| {
-        @compileLog(c, index);
+        // @compileLog(c, index);
         switch (mode) {
             .find_directive => {
                 switch (c) {
@@ -111,7 +112,7 @@ fn template(comptime str: []const u8) type {
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
                         if (field_num > 1) {
-                            @compileLog("patching", field_num - 1, content_start, directive_start - 1);
+                            // @compileLog("patching", field_num - 1, content_start, directive_start - 1);
                             var adjusted_len = directive_start - content_start;
                             fields[field_num - 1].type = [adjusted_len]u8;
                             fields[field_num - 1].default_value = str[content_start .. directive_start - 1];
@@ -161,7 +162,7 @@ fn template(comptime str: []const u8) type {
 }
 
 test "all" {
-    var out = std.io.getStdOut().writer();
+    var out = std.io.getStdErr().writer();
     const t = embed("testdata/all.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         try out.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
@@ -171,67 +172,80 @@ test "all" {
     try std.testing.expectEqual(57, data.all.len);
 }
 
-// test "foobar" {
-//     var out = std.io.getStdOut().writer();
-//     const t = embed("testdata/foobar.txt");
-//     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-//         std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
-//     }
-//     const data = t{};
+test "foobar" {
+    var out = std.io.getStdErr().writer();
+    const t = embed("testdata/foobar.txt");
+    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+        std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
+    }
+    const data = t{};
 
-//     try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
-//     try out.print("\nfoo: '{s}'\n", .{data.foo});
-//     try out.print("\nbar: '{s}'\n", .{data.bar});
-//     try std.testing.expectEqual(52, data.all.len);
-//     try std.testing.expectEqual(19, data.foo.len);
-//     try std.testing.expectEqual(24, data.bar.len);
-// }
+    try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
+    try out.print("\nfoo: '{s}'\n", .{data.foo});
+    try out.print("\nbar: '{s}'\n", .{data.bar});
+    try std.testing.expectEqual(52, data.all.len);
+    try std.testing.expectEqual(19, data.foo.len);
+    try std.testing.expectEqual(24, data.bar.len);
+}
 
-// test "customer_details" {
-//     // create some test data for the customer HTML report
-//     const Invoice = struct {
-//         date: []const u8,
-//         details: []const u8,
-//         amount: f32,
-//     };
+test "customer_details" {
+    // create some test data to push through the HTML report
+    const Invoice = struct {
+        date: []const u8,
+        details: []const u8,
+        amount: u64,
+    };
 
-//     const Customer = struct {
-//         name: []const u8,
-//         address: []const u8,
-//         credit: f32,
-//         invoices: []const Invoice,
-//     };
+    const Customer = struct {
+        name: []const u8,
+        address: []const u8,
+        credit: u64,
+        invoices: []const Invoice,
+    };
 
-//     const cust = Customer{
-//         .name = "Bill Smith",
-//         .address = "21 Main Street",
-//         .credit = 123.45,
-//         .invoices = &[_]Invoice{
-//             .{ .date = "12 Sep 2023", .details = "New Hoodie", .amount = 99.00 },
-//             .{ .date = "24 Sep 2023", .details = "2 Hotdogs with Cheese and Sauce", .amount = 11.00 },
-//             .{ .date = "14 Oct 2023", .details = "Milkshake", .amount = 3.0 },
-//         },
-//     };
-//     _ = cust;
+    const cust = Customer{
+        .name = "Bill Smith",
+        .address = "21 Main Street",
+        .credit = 12345,
+        .invoices = &[_]Invoice{
+            .{ .date = "12 Sep 2023", .details = "New Hoodie", .amount = 9900 },
+            .{ .date = "24 Sep 2023", .details = "2 Hotdogs with Cheese and Sauce", .amount = 1100 },
+            .{ .date = "14 Oct 2023", .details = "Milkshake", .amount = 30 },
+        },
+    };
 
-//     std.debug.print("do it\n", .{});
-//     var out = std.io.getStdOut().writer();
-//     const html_contents = @embedFile("testdata/customer_details.html");
-//     const html = template(html_contents){};
-//     _ = html;
-//     std.debug.print("hello\n", .{});
+    var out = std.io.getStdErr().writer();
+    const html_t = embed("testdata/customer_details.html");
 
-//     try out.writeAll("------ details -------\n");
-//     // try out.print("{s}", .{html.details});
-//     try out.writeAll("----------------------\n");
+    inline for (@typeInfo(html_t).Struct.fields, 0..) |f, i| {
+        try out.print("html has field {} name {s} type {}\n", .{ i, f.name, f.type });
+    }
 
-//     // try out.print(&html.details, cust);
-//     // try out.writeAll(&html.invoice_table_start);
-//     // var total: f32 = 0;
-//     // for (cust.invoices) |invoice| {
-//     // try out.print(&html.invoice_row, invoice);
-//     // total += invoice.amount;
-//     // }
+    const html = html_t{};
 
-//     // try out.print(&html.invoice_table_total, .{ .total = total });
-// }
+    try out.writeAll("------ details template -------\n");
+    try out.print("{s}", .{html.details});
+    try out.writeAll("------ invoice_table template -------\n");
+    try out.print("{s}", .{html.invoice_table});
+    try out.writeAll("------ invoice_row template -------\n");
+    try out.print("{s}", .{html.invoice_row});
+    try out.writeAll("------ invoice_row total -------\n");
+    try out.print("{s}", .{html.invoice_total});
+    try out.writeAll("\n-------------------------------\n");
+    try out.print(&html.details, .{
+        .name = cust.name,
+        .address = cust.address,
+        .credit = cust.credit,
+    });
+    try out.writeAll("----------------------\n");
+
+    // try out.print(&html.details, cust);
+    // try out.writeAll(&html.invoice_table_start);
+    // var total: f32 = 0;
+    // for (cust.invoices) |invoice| {
+    // try out.print(&html.invoice_row, invoice);
+    // total += invoice.amount;
+    // }
+
+    // try out.print(&html.invoice_table_total, .{ .total = total });
+}
