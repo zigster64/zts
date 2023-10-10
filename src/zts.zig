@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn embed(comptime path: []const u8) type {
+fn embed(comptime path: []const u8) type {
     return template(@embedFile(path));
 }
 
@@ -10,8 +10,8 @@ const Mode = enum {
     content_line,
 };
 
-pub fn template(comptime str: []const u8) type {
-    // @setEvalBranchQuota(1000);
+fn template(comptime str: []const u8) type {
+    // @setEvalBranchQuota(10000);
     const decls = &[_]std.builtin.Type.Declaration{};
 
     // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
@@ -160,16 +160,16 @@ pub fn template(comptime str: []const u8) type {
     });
 }
 
-// test "all" {
-//     var out = std.io.getStdOut().writer();
-//     const t = embed("testdata/all.txt");
-//     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-//         try out.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
-//     }
-//     const data = t{};
-//     try out.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
-//     try std.testing.expectEqual(57, data.all.len);
-// }
+test "all" {
+    var out = std.io.getStdOut().writer();
+    const t = embed("testdata/all.txt");
+    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+        try out.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
+    }
+    const data = t{};
+    try out.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
+    try std.testing.expectEqual(57, data.all.len);
+}
 
 // test "foobar" {
 //     var out = std.io.getStdOut().writer();
