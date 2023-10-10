@@ -1,2 +1,2 @@
 This file has no segments
-so t.all returns the whole file
+so .all returns the whole file
