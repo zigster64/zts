@@ -8,26 +8,20 @@ const Mode = enum {
 
 fn Template(comptime path: []const u8) type {
     @setEvalBranchQuota(500000);
-    const str = @embedFile(path);
-    const decls = &[_]std.builtin.Type.Declaration{};
+    comptime var str = @embedFile(path);
+    comptime var decls = &[_]std.builtin.Type.Declaration{};
 
     // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
     if (str.len < 1 or str[0] != '.') {
         // @compileLog("file is not a template");
-        var fields: [1]std.builtin.Type.StructField = undefined;
-
-        // NOTE - tried doing this as well. Seems closer ... but is segfaulting all over the place
-        // maybe persist with this path
-        // .type = *const [str.len:0]u8
-        // .default_value = str
+        comptime var fields: [1]std.builtin.Type.StructField = undefined;
 
         fields[0] = .{
             .name = "all",
-            .type = [str.len]u8,
+            .type = *const [str.len:0]u8,
             .is_comptime = true,
             .alignment = 0,
-            .default_value = str[0..], // << this is fine for instantiating one of these types and using the default value
-            // BUT ... that instance doesnt like being used as a comptime []u8 for print()
+            .default_value = str,
         };
         // @compileLog("non-template using fields", fields);
         return @Type(.{
@@ -78,7 +72,7 @@ fn Template(comptime path: []const u8) type {
     }
 
     // now we know how many fields there should be, so is safe to statically define the fields array
-    var fields: [num_fields + 1]std.builtin.Type.StructField = undefined;
+    comptime var fields: [num_fields + 1]std.builtin.Type.StructField = undefined;
 
     // inject the all values first
     fields[0] = .{
@@ -170,16 +164,81 @@ fn Template(comptime path: []const u8) type {
     });
 }
 
+test "hacky hack 1" {
+    var out = std.io.getStdErr().writer();
+    try out.writeAll("\n------------------hacky hack 1----------------------\n");
+
+    const Thing = struct {
+        comptime name: *const [10:0]u8 = "Name: {s}\n",
+        comptime address: *const [10:0]u8 = "Addr: {s}\n",
+    };
+
+    inline for (@typeInfo(Thing).Struct.fields, 0..) |f, i| {
+        try out.print("Thing field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
+    }
+
+    var thing = Thing{};
+    try out.print("typeof thing.name is {}\n", .{@TypeOf(thing.name)});
+    try out.print(thing.name, .{"Rupert Montgomery"});
+    try out.print(thing.address, .{"21 Main Street"});
+}
+
+fn HackyHack() type {
+    comptime var fields: [2]std.builtin.Type.StructField = undefined;
+    comptime var decls = &[_]std.builtin.Type.Declaration{};
+    fields[0] = .{
+        .name = "name",
+        .type = *const [10:0]u8,
+        .is_comptime = true,
+        .alignment = 0,
+        .default_value = "Name: {s}\n",
+    };
+    fields[1] = .{
+        .name = "address",
+        .type = *const [10:0]u8,
+        .is_comptime = true,
+        .alignment = 0,
+        .default_value = "Addr: {s}\n",
+    };
+    return @Type(.{
+        .Struct = .{
+            .layout = .Auto,
+            .fields = &fields,
+            .decls = decls,
+            .is_tuple = false,
+        },
+    });
+}
+
+test "hacky hack 2" {
+    var out = std.io.getStdErr().writer();
+    try out.writeAll("\n------------------hacky hack 2----------------------\n");
+
+    comptime var Thing = HackyHack();
+
+    inline for (@typeInfo(Thing).Struct.fields, 0..) |f, i| {
+        try out.print("Thing field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
+    }
+
+    comptime var thing = Thing{};
+    try out.print("typeof thing.name is {}\n", .{@TypeOf(thing.name)});
+    try out.writeAll("The lines below will crash without throwing an error ... so commented out\n");
+    // try out.print(thing.name, .{"Rupert Montgomery"});
+    // try out.print(thing.address, .{"21 Main Street"});
+    try out.print("But I can do this still with no probs {s}\n", .{thing.name});
+}
+
 test "all" {
     var out = std.io.getStdErr().writer();
+    try out.writeAll("\n------------------all.txt----------------------\n");
     const t = Template("testdata/all.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        try out.print("all.txt has field {} name {s} type {} is comptime {} default {?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
+        try out.print("all.txt field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
     }
     comptime var data = Template("testdata/all.txt"){};
     try out.print("typeof data.all is {}\n", .{@TypeOf(data.all)});
+    try out.print(data.all, .{});
     try out.print("value data.all is:\n{s}\n", .{data.all});
-    // try out.print(data.all, .{});
     try std.testing.expectEqual(57, data.all.len);
 }
 
