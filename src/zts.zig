@@ -5,7 +5,7 @@ fn embed(comptime path: []const u8) type {
 }
 
 const Mode = enum {
-    waiting_for_start_directive,
+    find_directive,
     reading_directive_name,
     content_line,
 };
@@ -13,11 +13,18 @@ const Mode = enum {
 fn template(comptime str: []const u8) type {
     const decls = &[_]std.builtin.Type.Declaration{};
 
-    // empty strings, or strings that dont start with a template segment - just map the whole string to .all
+    // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
     if (str.len < 1 or str[0] != '.') {
-        var fields: [1]std.builtin.Type.StructField = undefined;
+        var fields: [2]std.builtin.Type.StructField = undefined;
         fields[0] = .{
             .name = "all",
+            .type = [str.len]u8,
+            .is_comptime = true,
+            .alignment = 0,
+            .default_value = str[0..],
+        };
+        fields[0] = .{
+            .name = "raw",
             .type = [str.len]u8,
             .is_comptime = true,
             .alignment = 0,
@@ -34,21 +41,15 @@ fn template(comptime str: []const u8) type {
     }
 
     // parse the data manually, and work out how many fields we need to define
-    var mode: Mode = .waiting_for_start_directive;
+    var mode: Mode = .find_directive;
     var num_fields = 0;
     inline for (str) |c| {
         switch (mode) {
-            .waiting_for_start_directive => {
+            .find_directive => {
                 switch (c) {
-                    '.' => {
-                        mode = .reading_directive_name;
-                    },
-                    ' ', '\n' => {
-                        // skip leading whitespace
-                    },
-                    else => {
-                        mode = .content_line;
-                    },
+                    '.' => mode = .reading_directive_name,
+                    ' ', '\n' => {},
+                    else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
@@ -56,39 +57,30 @@ fn template(comptime str: []const u8) type {
                     '\n' => {
                         // got the end of a directive !
                         num_fields += 1;
-                        mode = .waiting_for_start_directive;
+                        mode = .find_directive;
                     },
-                    ' ' => {
-                        mode = .content_line;
-                    },
-                    else => {
-                        // skip this byte
-                    },
+                    ' ' => mode = .content_line,
+                    else => {},
                 }
             },
             .content_line => {
                 switch (c) {
-                    '\n' => {
-                        mode = .waiting_for_start_directive;
-                    },
-                    else => {
-                        // skip this byte, we are still reading a line
-                    },
+                    '\n' => mode = .find_directive,
+                    else => {},
                 }
             },
         }
     }
 
-    @compileLog("num_fields =", num_fields);
-
+    // @compileLog("num_fields =", num_fields);
     if (num_fields < 1) {
         @compileError("No fields found");
     }
 
-    // now we know how many fields there should be
+    // now we know how many fields there should be, so is safe to statically define the fields array
     var fields: [num_fields + 1]std.builtin.Type.StructField = undefined;
 
-    // inject the all value
+    // inject the all values first
     fields[0] = .{
         .name = "all",
         .type = [str.len]u8,
@@ -98,67 +90,59 @@ fn template(comptime str: []const u8) type {
     };
 
     var directive_start = 0;
-    var start = 0;
-    _ = start;
-    var end = 0;
-    _ = end;
+    var content_start = 0;
     var field_num = 1;
 
     // so now we need to loop through the whole parser a 2nd time to get the field details
-    mode = .waiting_for_start_directive;
+    mode = .find_directive;
     inline for (str, 0..) |c, index| {
         switch (mode) {
-            .waiting_for_start_directive => {
+            .find_directive => {
                 switch (c) {
                     '.' => {
                         directive_start = index;
                         mode = .reading_directive_name;
                     },
-                    ' ', '\n' => {
-                        // skip leading whitespace
-                    },
-                    else => {
-                        mode = .content_line;
-                    },
+                    ' ', '\n' => {},
+                    else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
                 switch (c) {
                     '\n' => {
-                        const dname = str[directive_start + 1 .. index - 1];
-                        const dlen = index - directive_start - 1;
-                        @compileLog("field", field_num, "has name", dname, "of len", dlen);
+                        // found a new directive - we need to patch the value of the previous content then
+                        if (field_num > 1) {
+                            // @compileLog("patching", field_num - 1, content_start, directive_start);
+                            fields[field_num - 1].default_value = str[content_start..directive_start];
+                        }
+                        const dname = str[directive_start + 1 .. index];
+                        const dlen = str.len - index;
+                        content_start = index + 1;
                         // got the end of a directive !
                         fields[field_num] = .{
                             .name = dname,
                             .type = [dlen]u8,
                             .is_comptime = true,
                             .alignment = 0,
-                            .default_value = str[index + 1 ..], // and then we have to truncate this value when we hit the next directive
+                            .default_value = str[content_start..],
                         };
-                        num_fields += 1;
-                        mode = .waiting_for_start_directive;
-                    },
-                    ' ' => {
+                        // @compileLog("field", field_num, fields[field_num]);
+                        field_num += 1;
                         mode = .content_line;
                     },
-                    else => {
-                        // skip this byte
-                    },
+                    ' ' => mode = .content_line,
+                    else => {},
                 }
             },
             .content_line => {
                 switch (c) {
-                    '\n' => {
-                        mode = .waiting_for_start_directive;
-                    },
-                    else => {
-                        // skip this byte, we are still reading a line
-                    },
+                    '\n' => mode = .find_directive,
+                    else => {},
                 }
             },
         }
     }
+
     return @Type(.{
         .Struct = .{
             .layout = .Auto,
@@ -170,22 +154,26 @@ fn template(comptime str: []const u8) type {
 }
 
 test "all text" {
-    const t = embed("testdata/all.input.txt");
+    const t = embed("testdata/all.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         std.debug.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
     }
     const data = t{};
     std.debug.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
-    // try std.testing.expectEqualStrings(@embedFile("testdata/all.output.txt"), &data.all);
+    try std.testing.expectEqual(data.all.len, 58);
 }
 
 test "foo bar" {
-    const t = embed("testdata/foobar.input.txt");
+    const t = embed("testdata/foobar.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        std.debug.print("foobar.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
+        std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
     }
     const data = t{};
-    _ = data;
-    // std.debug.print("Whole contents of foobar.txt is:\n{s}\n", .{data.all});
-    // try std.testing.expectEqualStrings(@embedFile("testdata/foobar.all.output.txt"), &data.all);
+
+    std.debug.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
+    std.debug.print("foo: '{s}'\n", .{data.foo});
+    std.debug.print("bar: '{s}'\n", .{data.bar});
+    try std.testing.expectEqual(data.all.len, 52);
+    try std.testing.expectEqualStrings(data.foo, "I like the daytime");
+    try std.testing.expectEqualStrings(data.bar, "I prefer the nighttime");
 }
