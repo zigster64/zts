@@ -225,7 +225,6 @@ test "hacky hack 2" {
     try out.writeAll("The lines below will crash without throwing an error ... so commented out\n");
     // try out.print(thing.name, .{"Rupert Montgomery"});
     // try out.print(thing.address, .{"21 Main Street"});
-    try out.print("But I can do this still with no probs {s}\n", .{thing.name});
 }
 
 test "all" {
