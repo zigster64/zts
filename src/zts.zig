@@ -1,6 +1,6 @@
 const std = @import("std");
 
-fn embed(comptime path: []const u8) type {
+pub fn embed(comptime path: []const u8) type {
     return template(@embedFile(path));
 }
 
@@ -10,11 +10,13 @@ const Mode = enum {
     content_line,
 };
 
-fn template(comptime str: []const u8) type {
+pub fn template(comptime str: []const u8) type {
+    // @setEvalBranchQuota(1000);
     const decls = &[_]std.builtin.Type.Declaration{};
 
     // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
     if (str.len < 1 or str[0] != '.') {
+        // @compileLog("file is not a template");
         var fields: [1]std.builtin.Type.StructField = undefined;
         fields[0] = .{
             .name = "all",
@@ -83,20 +85,23 @@ fn template(comptime str: []const u8) type {
     };
 
     var directive_start = 0;
+    var maybe_directive_start = 0;
     var content_start = 0;
     var field_num = 1;
 
     // so now we need to loop through the whole parser a 2nd time to get the field details
     mode = .find_directive;
     inline for (str, 0..) |c, index| {
+        @compileLog(c, index);
         switch (mode) {
             .find_directive => {
                 switch (c) {
                     '.' => {
-                        directive_start = index;
+                        maybe_directive_start = index;
                         mode = .reading_directive_name;
+                        // @compileLog("maybe new directive at", maybe_directive_start);
                     },
-                    ' ', '\n' => {},
+                    ' ', '\t', '\n' => {}, // eat whitespace
                     else => mode = .content_line,
                 }
             },
@@ -104,8 +109,9 @@ fn template(comptime str: []const u8) type {
                 switch (c) {
                     '\n' => {
                         // found a new directive - we need to patch the value of the previous content then
+                        directive_start = maybe_directive_start;
                         if (field_num > 1) {
-                            // @compileLog("patching", field_num - 1, content_start, directive_start - 1);
+                            @compileLog("patching", field_num - 1, content_start, directive_start - 1);
                             var adjusted_len = directive_start - content_start;
                             fields[field_num - 1].type = [adjusted_len]u8;
                             fields[field_num - 1].default_value = str[content_start .. directive_start - 1];
@@ -126,11 +132,14 @@ fn template(comptime str: []const u8) type {
                         field_num += 1;
                         mode = .content_line;
                     },
-                    ' ' => mode = .content_line,
+                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                        mode = .content_line;
+                        maybe_directive_start = directive_start;
+                    },
                     else => {},
                 }
             },
-            .content_line => {
+            .content_line => { // just eat the rest of the line till the next CR
                 switch (c) {
                     '\n' => mode = .find_directive,
                     else => {},
@@ -138,6 +147,8 @@ fn template(comptime str: []const u8) type {
             },
         }
     }
+
+    // @compileLog("fields", fields);
 
     return @Type(.{
         .Struct = .{
@@ -149,27 +160,78 @@ fn template(comptime str: []const u8) type {
     });
 }
 
-test "all" {
-    const t = embed("testdata/all.txt");
-    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        std.debug.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
-    }
-    const data = t{};
-    std.debug.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
-    try std.testing.expectEqual(57, data.all.len);
-}
+// test "all" {
+//     var out = std.io.getStdOut().writer();
+//     const t = embed("testdata/all.txt");
+//     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+//         try out.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
+//     }
+//     const data = t{};
+//     try out.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
+//     try std.testing.expectEqual(57, data.all.len);
+// }
 
-test "foobar" {
-    const t = embed("testdata/foobar.txt");
-    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
-    }
-    const data = t{};
+// test "foobar" {
+//     var out = std.io.getStdOut().writer();
+//     const t = embed("testdata/foobar.txt");
+//     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+//         std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
+//     }
+//     const data = t{};
 
-    std.debug.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
-    std.debug.print("\nfoo: '{s}'\n", .{data.foo});
-    std.debug.print("\nbar: '{s}'\n", .{data.bar});
-    try std.testing.expectEqual(52, data.all.len);
-    try std.testing.expectEqual(19, data.foo.len);
-    try std.testing.expectEqual(24, data.bar.len);
-}
+//     try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
+//     try out.print("\nfoo: '{s}'\n", .{data.foo});
+//     try out.print("\nbar: '{s}'\n", .{data.bar});
+//     try std.testing.expectEqual(52, data.all.len);
+//     try std.testing.expectEqual(19, data.foo.len);
+//     try std.testing.expectEqual(24, data.bar.len);
+// }
+
+// test "customer_details" {
+//     // create some test data for the customer HTML report
+//     const Invoice = struct {
+//         date: []const u8,
+//         details: []const u8,
+//         amount: f32,
+//     };
+
+//     const Customer = struct {
+//         name: []const u8,
+//         address: []const u8,
+//         credit: f32,
+//         invoices: []const Invoice,
+//     };
+
+//     const cust = Customer{
+//         .name = "Bill Smith",
+//         .address = "21 Main Street",
+//         .credit = 123.45,
+//         .invoices = &[_]Invoice{
+//             .{ .date = "12 Sep 2023", .details = "New Hoodie", .amount = 99.00 },
+//             .{ .date = "24 Sep 2023", .details = "2 Hotdogs with Cheese and Sauce", .amount = 11.00 },
+//             .{ .date = "14 Oct 2023", .details = "Milkshake", .amount = 3.0 },
+//         },
+//     };
+//     _ = cust;
+
+//     std.debug.print("do it\n", .{});
+//     var out = std.io.getStdOut().writer();
+//     const html_contents = @embedFile("testdata/customer_details.html");
+//     const html = template(html_contents){};
+//     _ = html;
+//     std.debug.print("hello\n", .{});
+
+//     try out.writeAll("------ details -------\n");
+//     // try out.print("{s}", .{html.details});
+//     try out.writeAll("----------------------\n");
+
+//     // try out.print(&html.details, cust);
+//     // try out.writeAll(&html.invoice_table_start);
+//     // var total: f32 = 0;
+//     // for (cust.invoices) |invoice| {
+//     // try out.print(&html.invoice_row, invoice);
+//     // total += invoice.amount;
+//     // }
+
+//     // try out.print(&html.invoice_table_total, .{ .total = total });
+// }

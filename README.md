@@ -83,7 +83,7 @@ The HTML template looks like this :
     <h1>Customer</h1>
     <p>Name: {[name]:s}</p>
     <p>Address: {[address]:s}</p>
-    <p>Phone: {[phone]:s}</p>
+    <p>Credit Limit: $ {[credit]:.2}</p>
 
     .invoice_table_start
     <h2>Invoices</h2>
@@ -98,14 +98,14 @@ The HTML template looks like this :
         <tr>
             <td>{[date]:s}</td>
             <td>{[details]:s}</td>
-            <td>{$[amount]}</td>
+            <td>$ {[amount]:.2}</td>
         </tr>
 
         .invoice_table_total
         <tr>
             <td></td>
             <td>Total Due:</td>
-            <td>$ {[total]}</td>
+            <td>$ {[total]:.2}</td>
         </tr>
 
     </table>
@@ -124,7 +124,7 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
     try out.print(html.details, .{
         .name = cust.name,
         .address = cust.address,
-        .phone = cust.phone,
+        .credit = cust.credit,
     });
 
     try out.write(html.invoice_table_start);
