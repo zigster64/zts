@@ -1,0 +1,32 @@
+.details
+<div>
+    <h1>Customer</h1>
+    <p>Name: {[name]:s}</p>
+    <p>Address: {[address]:s}</p>
+    <p>Credit Limit: $ {[credit]:.2}</p>
+
+    .invoice_table
+    <h2>Invoices</h2>
+    <table>
+        <tr>
+            <th>Date</th>
+            <th>Details</th>
+            <th>Amount</th>
+        </tr>
+
+        .invoice_row
+        <tr>
+            <td>{[date]:s}</td>
+            <td>{[details]:s}</td>
+            <td>$ {[amount]:.2}</td>
+        </tr>
+
+        .invoice_total
+        <tr>
+            <td></td>
+            <td>Total Due:</td>
+            <td>$ {[total]:.2}</td>
+        </tr>
+
+    </table>
+</div>
