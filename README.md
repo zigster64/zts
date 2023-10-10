@@ -35,7 +35,7 @@ Then in your zig code, you can create a new struct type from that text file, whi
 ```zig
 const zts = @import("zts");
 
-const my_foobar = zts.load("foobar.txt"){}; // this returns an instance of a new foobar struct type
+const my_foobar = zts.template("foobar.txt"){}; // this returns an instance of a new foobar struct type
 
 // my_foobar is now an instance of a struct that looks like this
 // struct {
@@ -119,7 +119,7 @@ const zts = @import("zts");
 
 fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 
-    var html = zts.load("html/customer_details.html"); 
+    var html = zts.template("html/customer_details.html"); 
     
     try out.print(html.details, .{
         .name = cust.name,
@@ -161,7 +161,7 @@ Bar prefers the nighttime
 
 Zig code that uses the template
 ```zig
-var data = zts.load("foobar.txt"){}
+var data = zts.template("foobar.txt"){}
 std.debug.print("I am foobar, and I only have 1 field  {s}\n", .{data.all});
 ```
 
