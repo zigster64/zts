@@ -35,7 +35,7 @@ Then in your zig code, you can create a new struct type from that text file, whi
 ```zig
 const zts = @import("zts");
 
-const my_foobar = zts.embed("foobar.txt"){}; // this returns an instance of a new foobar struct type
+const my_foobar = zts.load("foobar.txt"){}; // this returns an instance of a new foobar struct type
 
 // my_foobar is now an instance of a struct that looks like this
 // struct {
@@ -119,7 +119,7 @@ const zts = @import("zts");
 
 fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 
-    var html = zts.embed("html/customer_details.html"); 
+    var html = zts.load("html/customer_details.html"); 
     
     try out.print(html.details, .{
         .name = cust.name,
@@ -161,7 +161,7 @@ Bar prefers the nighttime
 
 Zig code that uses the template
 ```zig
-var data = zts.embed("foobar.txt"){}
+var data = zts.load("foobar.txt"){}
 std.debug.print("I am foobar, and I only have 1 field  {s}\n", .{data.all});
 ```
 
@@ -177,6 +177,7 @@ Syntactically, the `.directive` in the template must obey these rules :
 - Can start with any amount of leading whitespace
 - Begins with a `.` character
 - Contains just the directive word with no whitespace, and no templated content
+- Directive name cannot contain special characters [] {} - : \t
 - Is a complete line, terminated by a `CR` or `LF`
 
 Any lines that do not obey all of the above rules are considered as content, and not a directive.

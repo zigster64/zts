@@ -1,6 +1,6 @@
 const std = @import("std");
 
-fn embed(comptime path: []const u8) type {
+fn load(comptime path: []const u8) type {
     return template(@embedFile(path));
 }
 
@@ -168,18 +168,19 @@ fn template(comptime str: []const u8) type {
 
 test "all" {
     var out = std.io.getStdErr().writer();
-    const t = embed("testdata/all.txt");
+    const t = load("testdata/all.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         try out.print("all.txt has field {} name {s} type {}\n", .{ i, f.name, f.type });
     }
     const data = t{};
     try out.print("Whole contents of all.txt is:\n{s}\n", .{data.all});
+    // try out.print(&data.all, .{});
     try std.testing.expectEqual(57, data.all.len);
 }
 
 test "foobar" {
     var out = std.io.getStdErr().writer();
-    const t = embed("testdata/foobar.txt");
+    const t = load("testdata/foobar.txt");
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
     }
@@ -195,7 +196,7 @@ test "foobar" {
 
 test "edge-phantom-directive" {
     var out = std.io.getStdErr().writer();
-    const t = embed("testdata/edge-phantom-directive.txt");
+    const t = load("testdata/edge-phantom-directive.txt");
 
     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
         try out.print("type has field {} name {s} type {}\n", .{ i, f.name, f.type });
@@ -238,7 +239,7 @@ test "customer_details" {
     _ = cust;
 
     var out = std.io.getStdErr().writer();
-    const html_t = embed("testdata/customer_details.html");
+    const html_t = load("testdata/customer_details.html");
 
     inline for (@typeInfo(html_t).Struct.fields, 0..) |f, i| {
         try out.print("html has field {} name {s} type {}\n", .{ i, f.name, f.type });
@@ -255,7 +256,12 @@ test "customer_details" {
     try out.writeAll("------ invoice_row total -------\n");
     try out.print("{s}", .{html.invoice_total});
     try out.writeAll("\n-------------------------------\n");
-    // try out.print(comptime &html.details, .{
+
+    try out.print("typeof html_t {any}\n", .{@TypeOf(html_t)});
+    try out.print("typeof html {any}\n", .{@TypeOf(html)});
+    //try out.print(&html.invoice_table, .{}); // has no expansions
+
+    // try out.print(&html.details, .{
     //     .name = cust.name,
     //     .address = cust.address,
     //     .credit = cust.credit,
