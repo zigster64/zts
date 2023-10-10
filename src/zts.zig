@@ -39,7 +39,7 @@ fn template(comptime str: []const u8) type {
     // PASS 1 - just count up the number of directives, so we can create the fields array of known size
     var mode: Mode = .find_directive;
     var num_fields = 0;
-    inline for (str) |c| {
+    for (str) |c| {
         switch (mode) {
             .find_directive => {
                 switch (c) {
@@ -97,7 +97,7 @@ fn template(comptime str: []const u8) type {
     // reverts back to the last good directive_start when it is detected that its a false reading
     // When the next directive is seen, then the content block in the previous field needs to be truncated
     mode = .find_directive;
-    inline for (str, 0..) |c, index| {
+    for (str, 0..) |c, index| {
         // @compileLog(c, index);
         switch (mode) {
             .find_directive => {
@@ -255,7 +255,7 @@ test "customer_details" {
     try out.writeAll("------ invoice_row total -------\n");
     try out.print("{s}", .{html.invoice_total});
     try out.writeAll("\n-------------------------------\n");
-    // try out.print(&html.details, .{
+    // try out.print(comptime &html.details, .{
     //     .name = cust.name,
     //     .address = cust.address,
     //     .credit = cust.credit,
