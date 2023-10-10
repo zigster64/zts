@@ -36,7 +36,7 @@ fn template(comptime str: []const u8) type {
         });
     }
 
-    // parse the data manually, and work out how many fields we need to define
+    // PASS 1 - just count up the number of directives, so we can create the fields array of known size
     var mode: Mode = .find_directive;
     var num_fields = 0;
     inline for (str) |c| {
@@ -55,7 +55,7 @@ fn template(comptime str: []const u8) type {
                         num_fields += 1;
                         mode = .find_directive;
                     },
-                    ' ' => mode = .content_line,
+                    ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => mode = .content_line,
                     else => {},
                 }
             },
@@ -90,7 +90,12 @@ fn template(comptime str: []const u8) type {
     var content_start = 0;
     var field_num = 1;
 
-    // so now we need to loop through the whole parser a 2nd time to get the field details
+    // PASS 2
+    // this is a bit more involved, as we cant allocate, and we want to do this in 1 single sweep of the data.
+    // Scan through the data again, looking for a directive, and keep track of the offset of the start of content.
+    // It uses 2 vars - maybe_directive_start is used when it thinks there might be a new directive, which
+    // reverts back to the last good directive_start when it is detected that its a false reading
+    // When the next directive is seen, then the content block in the previous field needs to be truncated
     mode = .find_directive;
     inline for (str, 0..) |c, index| {
         // @compileLog(c, index);
@@ -133,7 +138,7 @@ fn template(comptime str: []const u8) type {
                         field_num += 1;
                         mode = .content_line;
                     },
-                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         mode = .content_line;
                         maybe_directive_start = directive_start;
                     },
@@ -188,6 +193,23 @@ test "foobar" {
     try std.testing.expectEqual(24, data.bar.len);
 }
 
+test "edge-phantom-directive" {
+    var out = std.io.getStdErr().writer();
+    const t = embed("testdata/edge-phantom-directive.txt");
+
+    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+        try out.print("type has field {} name {s} type {}\n", .{ i, f.name, f.type });
+    }
+
+    const data = t{};
+    try std.testing.expectEqual(49, data.header.len);
+    try std.testing.expectEqual(179, data.body.len);
+    try std.testing.expectEqual(185, data.footer.len);
+    try std.testing.expectEqual(63, data.nested_footer.len);
+    try out.print("You can see that the body has lots of phantom directives that didnt trick the parser:\n{s}\n", .{data.body});
+    try out.print("\nAnd the footer as well:\n{s}\n", .{data.footer});
+}
+
 test "customer_details" {
     // create some test data to push through the HTML report
     const Invoice = struct {
@@ -213,6 +235,7 @@ test "customer_details" {
             .{ .date = "14 Oct 2023", .details = "Milkshake", .amount = 30 },
         },
     };
+    _ = cust;
 
     var out = std.io.getStdErr().writer();
     const html_t = embed("testdata/customer_details.html");
@@ -232,11 +255,11 @@ test "customer_details" {
     try out.writeAll("------ invoice_row total -------\n");
     try out.print("{s}", .{html.invoice_total});
     try out.writeAll("\n-------------------------------\n");
-    try out.print(&html.details, .{
-        .name = cust.name,
-        .address = cust.address,
-        .credit = cust.credit,
-    });
+    // try out.print(&html.details, .{
+    //     .name = cust.name,
+    //     .address = cust.address,
+    //     .credit = cust.credit,
+    // });
     try out.writeAll("----------------------\n");
 
     // try out.print(&html.details, cust);

@@ -1,0 +1,18 @@
+.header
+    This is the header which is perfectly valid
+
+.body
+    Here is some body content which has what may be taken as a 
+    .phantom directive
+    Which its not, its just normal content that 
+    .happens to start with whitespace+dot
+
+.footer
+    and now the state recovers and its back to finding
+    directives
+    .cant-have-dashes-in-names
+    .or[brackets]
+    .or{curlyBrackets}
+    .not_allowed:to_have_colons_either
+    .nested_footer
+        and nested directives with leading whitespace as well
