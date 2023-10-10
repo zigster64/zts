@@ -1,0 +1,4 @@
+.foo
+I like the daytime
+.bar
+I prefer the nighttime

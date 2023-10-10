@@ -1,4 +1,0 @@
-.foo
-This is the contents of foo
-.bar
-This is the contents of bar
