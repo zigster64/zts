@@ -24,13 +24,14 @@ pub fn Template(comptime str: []const u8) type {
 
     // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
     if (str.len < 1 or str[0] != '.') {
-        var fields: [1]std.builtin.Type.StructField = undefined;
-        fields[0] = all;
+        var one_field: [1]std.builtin.Type.StructField = undefined;
+        one_field[0] = all;
+        @compileLog(one_field);
 
         return @Type(.{
             .Struct = .{
                 .layout = .Auto,
-                .fields = &fields,
+                .fields = &one_field,
                 .decls = decls,
                 .is_tuple = false,
             },
@@ -76,8 +77,7 @@ pub fn Template(comptime str: []const u8) type {
     }
 
     // now we know how many fields there should be, so is safe to statically define the fields array
-    // comptime var fields: [num_fields + 1]std.builtin.Type.StructField = undefined;
-    comptime var fields: [1]std.builtin.Type.StructField = undefined;
+    comptime var fields: [num_fields + 1]std.builtin.Type.StructField = undefined;
     fields[0] = all;
 
     comptime var directive_start = 0;
@@ -111,7 +111,7 @@ pub fn Template(comptime str: []const u8) type {
                     '\n' => {
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
-                        if (false and field_num > 1) {
+                        if (field_num > 1) {
                             // dont need to adjust the default value, because its the same address, just the size of the block its pointing to
                             var adjusted_len = directive_start - content_start;
                             fields[field_num - 1].type = *const [adjusted_len]u8;
@@ -120,15 +120,16 @@ pub fn Template(comptime str: []const u8) type {
                         const dname = str[directive_start + 1 .. index];
                         const dlen = str.len - index;
                         content_start = index + 1;
-                        if (false and content_start < str.len) {
+                        if (content_start < str.len) {
                             fields[field_num] = .{
                                 .name = dname,
                                 .type = *const [dlen]u8,
-                                .default_value = @ptrCast(&str[content_start..]),
+                                .default_value = @ptrCast(&str[0..]),
+                                // .default_value = @ptrCast(&str[content_start..]),
                                 .is_comptime = true,
                                 .alignment = 0,
                             };
-                            @compileLog("field", field_num, fields[field_num]);
+                            // @compileLog("field", field_num, fields[field_num]);
                         }
                         field_num += 1;
                         mode = .content_line;
@@ -149,7 +150,7 @@ pub fn Template(comptime str: []const u8) type {
         }
     }
 
-    // @compileLog("fields", fields);
+    @compileLog("fields", fields);
 
     return @Type(.{
         .Struct = .{
@@ -240,19 +241,18 @@ test "template with no segments" {
 test "template with multiple segments" {
     var out = std.io.getStdErr().writer();
     try out.writeAll("\n-----------------template with multiple segments----------------------\n");
-    comptime var dd = @embedFile("testdata/foobar.txt");
-    try out.writeAll(dd);
 
-    comptime var t = Template(dd);
-    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
-    }
-    comptime var data = Template("testdata/foobar.txt"){};
+    comptime var t = Embed("testdata/foobar.txt");
+    _ = t;
+    //     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+    //         std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
+    //     }
+    //     // comptime var data = Embed("testdata/foobar.txt"){};
 
-    try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
-    // try out.print("\nfoo: '{s}'\n", .{data.foo});
-    // try out.print("\nbar: '{s}'\n", .{data.bar});
-    // try std.testing.expectEqual(52, data.all.len);
-    // try std.testing.expectEqual(19, data.foo.len);
-    // try std.testing.expectEqual(24, data.bar.len);
+    //     // try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
+    //     // try out.print("\nfoo: '{s}'\n", .{data.foo});
+    //     // try out.print("\nbar: '{s}'\n", .{data.bar});
+    //     // try std.testing.expectEqual(52, data.all.len);
+    //     // try std.testing.expectEqual(19, data.foo.len);
+    //     // try std.testing.expectEqual(24, data.bar.len);
 }
