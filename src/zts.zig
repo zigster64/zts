@@ -17,7 +17,7 @@ pub fn Template(comptime str: []const u8) type {
     const all = std.builtin.Type.StructField{
         .name = "all",
         .type = *const [str.len]u8,
-        .is_comptime = true,
+        .is_comptime = false,
         .alignment = 0,
         .default_value = @ptrCast(&str[0..]),
     };
@@ -26,7 +26,6 @@ pub fn Template(comptime str: []const u8) type {
     if (str.len < 1 or str[0] != '.') {
         var one_field: [1]std.builtin.Type.StructField = undefined;
         one_field[0] = all;
-        @compileLog(one_field);
 
         return @Type(.{
             .Struct = .{
@@ -41,7 +40,7 @@ pub fn Template(comptime str: []const u8) type {
     // PASS 1 - just count up the number of directives, so we can create the fields array of known size
     comptime var mode: Mode = .find_directive;
     comptime var num_fields = 0;
-    inline for (str) |c| {
+    for (str) |c| {
         // @compileLog(c);
         switch (mode) {
             .find_directive => {
@@ -92,7 +91,7 @@ pub fn Template(comptime str: []const u8) type {
     // reverts back to the last good directive_start when it is detected that its a false reading
     // When the next directive is seen, then the content block in the previous field needs to be truncated
     mode = .find_directive;
-    inline for (str, 0..) |c, index| {
+    for (str, 0..) |c, index| {
         // @compileLog(c, index);
         switch (mode) {
             .find_directive => {
@@ -115,21 +114,23 @@ pub fn Template(comptime str: []const u8) type {
                             // dont need to adjust the default value, because its the same address, just the size of the block its pointing to
                             var adjusted_len = directive_start - content_start;
                             fields[field_num - 1].type = *const [adjusted_len]u8;
-                            // @compileLog("patched previous to", fields[field_num - 1]);
+                            @compileLog("patched previous to", fields[field_num - 1]);
                         }
-                        const dname = str[directive_start + 1 .. index];
+                        const directive_name = str[directive_start + 1 .. index];
                         const dlen = str.len - index;
+                        // const default_value: ?*const anyopaque = @ptrCast(&str[content_start..]);
                         content_start = index + 1;
                         if (content_start < str.len) {
-                            fields[field_num] = .{
-                                .name = dname,
+                            fields[field_num] = comptime std.builtin.Type.StructField{
+                                .name = directive_name,
                                 .type = *const [dlen]u8,
-                                .default_value = @ptrCast(&str[0..]),
-                                // .default_value = @ptrCast(&str[content_start..]),
+                                // .default_value = default_value,
+                                // .default_value = @ptrCast(&"Nothing to see here"),
+                                .default_value = @ptrCast(&str[content_start..]),
                                 .is_comptime = true,
                                 .alignment = 0,
                             };
-                            // @compileLog("field", field_num, fields[field_num]);
+                            @compileLog("field", field_num, fields[field_num]);
                         }
                         field_num += 1;
                         mode = .content_line;
@@ -152,7 +153,7 @@ pub fn Template(comptime str: []const u8) type {
 
     @compileLog("fields", fields);
 
-    return @Type(.{
+    return @Type(comptime .{
         .Struct = .{
             .layout = .Auto,
             .fields = &fields,
@@ -218,7 +219,7 @@ test "generated struct" {
         try out.print("Thing field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
     }
 
-    comptime var thing = Thing{};
+    const thing = Thing{};
     try out.print("typeof thing.name is {}\n", .{@TypeOf(thing.name)});
     try out.print(thing.name, .{"Rupert Montgomery"});
     try out.print(thing.address, .{"21 Main Street"});
@@ -232,7 +233,7 @@ test "template with no segments" {
         try out.print("all.txt field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
     }
 
-    comptime var data = Embed("testdata/all.txt"){};
+    const data = Embed("testdata/all.txt"){};
     try out.print("typeof data.all is {}\n", .{@TypeOf(data.all)});
     try out.print(data.all, .{"formatting"});
     try std.testing.expectEqual(78, data.all.len);
@@ -242,17 +243,16 @@ test "template with multiple segments" {
     var out = std.io.getStdErr().writer();
     try out.writeAll("\n-----------------template with multiple segments----------------------\n");
 
-    comptime var t = Embed("testdata/foobar.txt");
-    _ = t;
-    //     inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-    //         std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
-    //     }
-    //     // comptime var data = Embed("testdata/foobar.txt"){};
+    const t = Embed("testdata/foobar.txt");
+    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
+        std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
+    }
+    const data = Embed("testdata/foobar.txt"){};
 
-    //     // try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
-    //     // try out.print("\nfoo: '{s}'\n", .{data.foo});
-    //     // try out.print("\nbar: '{s}'\n", .{data.bar});
-    //     // try std.testing.expectEqual(52, data.all.len);
-    //     // try std.testing.expectEqual(19, data.foo.len);
-    //     // try std.testing.expectEqual(24, data.bar.len);
+    try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
+    try out.print("\nfoo: '{s}'\n", .{data.foo});
+    try out.print("\nbar: '{s}'\n", .{data.bar});
+    try std.testing.expectEqual(52, data.all.len);
+    try std.testing.expectEqual(19, data.foo.len);
+    try std.testing.expectEqual(24, data.bar.len);
 }
