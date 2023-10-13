@@ -133,6 +133,15 @@ try zts.printSection(data, "other", .{}, out);
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
 
+If the template gets modified - say change the label `.foo` to `.fooz` in the text file ... then that will also cause
+a compile error in the Zig code, saying that "foo" doesnt exist in the template anymore.
+
+If the template changes again, say ... change the `.foo` contents to `I like {d}` ... then this will also cause a compile
+error in the Zig code, saying that the string parameter "daytime" does not match format "{d}" in the template.
+
+There is no great magic here, its just the power of Zig comptime, as it is actively parsing the text templates at compile time,
+and using the built in Zig `print` formatting which also evaluates at compile time.
+
 ## ZTS runtime / non-comptime helper functions
 
 If you want to pass data through template segments using the built in Zig `print` functions on the writer, then everything must be comptime.
@@ -143,7 +152,7 @@ If your template segments DO NOT have print formatting, do not need argument pro
 then you can use the `write` variant helper functions that ZTS provides.
 
 ```zig
-try zts.writeHeader(data, out)`;
+try zts.writeHeader(data, out);
 try zts.writeSection(data, section, out);
 ```
 
