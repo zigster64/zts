@@ -185,7 +185,8 @@ const printable_dynamic_section = zts.s(data, os.getenv("PLANET").?);  // <<-- c
 
 Comptime restrictions can be a pain.
 
-ZTS `lookup()`, `writeHeader()`, and `writeSection()` might be able to help you out if you need to do some dynamic lookups .. or it might not.
+ZTS `lookup()`, `writeHeader()`, and `writeSection()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
+depending on how deep a hole of meta programming you are in.
 
 
 ## A more common HTML templating example
