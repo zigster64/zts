@@ -18,6 +18,10 @@ As a HTML templating util, this covers a lot of bases, and provides a pretty san
 
 Lets have a look ...
 
+## Difference to other templating tools
+
+
+
 
 ## Very Basic Example
 
@@ -30,46 +34,76 @@ I prefer daytime
 I like the nighttime
 ```
 
-Then in your zig code, you can create a new struct type from that text file, which has fields as defined in the text file above, filled in the static strings as defined in the file between the .directives.
+Then in your zig code, just embed that file, and then use the `zts.s(data, section_name)` function to return the appropriate section out of the data.
 
 ```zig
 const zts = @import("zts");
 
-const my_foobar = zts.template("foobar.txt"){}; // this returns an instance of a new foobar struct type
+const out = std.io.getStdOut().writer();
 
-// my_foobar is now an instance of a struct that looks like this
-// struct {
-//   foo: []const u8 = "I prefer daytime",
-//   bar: []const u8 = "I like the nighttime",
-// }
-
-std.debug.print("{s}\n", my_foobar.foo);
-std.debug.print("{s}\n", my_foobar.bar);
+const data = @embedFile("foobar.txt");
+try out.print("{s}\n", zts.s(my_foobar, "foo"));
+try out.print("{s}\n", zts.s(my_foobar, "bar"));
 
 ```
 
-Thats really all there is to it.
+Thats really all there is to it. Its basically splitting the input into sections delimited by named tags in the input text.
 
-If your template file and your Zig code get out of sync due to ongoing changes, nothing to fear ... Zig will pick that up at compile time, and throw an error about missing struct fields, rather than discovering a template bug at runtime.
+## The contents of data Sections are comptime known
+
+The data returned from `s(data, section_name)` is comptime known ... which means that it can in turn be passed to Zig standard print functions 
+as a formatting string.
+
+```
+.foo
+I like {s}
+.bar
+I prefer {s}
+```
+
+```zig
+
+const data = @embedFile("foobar.txt");
+try out.print(zts.s(data, "foo"), .{"daytime"});
+try out.print(zts.s(data, "bar"), .{"nighttime"});
+
+```
+
+## ZTS print helper functions
+
+Use of the `s(data, section_name)` function is provided as a low-level utility.
+
+Putting `zts.s(data, section_name)` name everywhere is a bit verbose, and gets a bit messy very quickly. 
+
+ZTS provides helper functions that make it easier to print.
+
+
+```
+.foo
+I like {s}
+.bar
+I prefer {s}
+```
+
+```zig
+
+const data = @embedFile("foobar.txt");
+try zts.printSection(data, "foo", .{"daytime"}, out);
+try zts.printSection(data, "bar", .{"daytime"}, out);
+
+```
+
+Because everything is happening at comptime, ff your template file and your Zig code get out of sync due to ongoing changes,
+nothing to fear ... Zig will pick that up at compile time, and throw an error about missing sections in your templates, as 
+well as the standard compile errors about parameters not matching the expected fields in the template.
 
 for example, if you add this to the code above :
 
 ```zig
-std.debug.print("{s}\n", my_foobar.header); // compile error as the .header directive doesnt exist in the template file !
+try zts.printSection(data, "other", .{}, out);
 ```
 
-In addition to having fields `.foo` and `.bar`, the templated type also has an automatic field named `.all` which contains the entire content, including any directives.
-
-eg: 
-```zig
-std.debug.print("{s}\n", .{my_foobar.all});
-```
-
-will output :
-```
-I prefer daytime
-I like the nighttime
-```
+This will throw a compile error saying that there is no section labelled `other` in the template.
 
 ## A more common HTML templating example
 
@@ -78,14 +112,16 @@ Lets define a typical HTML file, with template segments defined, and add some pl
 The HTML template looks like this :
 
 ```html
-.details
 <div>
+  <h1>Financial Statement Page</h1>
+
+    .customer_details
     <h1>Customer</h1>
     <p>Name: {[name]:s}</p>
     <p>Address: {[address]:s}</p>
     <p>Credit Limit: $ {[credit]:.2}</p>
 
-    .invoice_table_start
+    .invoice_table
     <h2>Invoices</h2>
     <table>
         <tr>
@@ -113,34 +149,57 @@ The HTML template looks like this :
 
 ```
 
-And the Zig code to print through the template looks like this :
+And the Zig code to print data through that template looks like this :
 ```zig
-const zts = @import("zts");
-
 fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 
-    var html = zts.template("html/customer_details.html"); 
-    
-    try out.print(html.details, .{
+  var data = @embedFile("html/financial_statement.html");
+   
+   try zts.printHeader(data, .{}, out);
+   try zts.printSection(data, "customer_details", .{
         .name = cust.name,
         .address = cust.address,
         .credit = cust.credit,
-    });
+   });
 
-    try out.write(html.invoice_table_start);
-    var total = 0.0;
+   try zts.printSection(data, "invoice_table", .{}, out);
     for (cust.invoices) |invoice|  {
-        try out.print(html.invoice_row, invoice);
-        total += invoice.amount;
+      try zts.printSection(data, "invoice_row", .{
+          .date = invoice.date,
+          .details = invoice.details,
+          .amount = invoice.amount,
+        },
+      out);
+      total += invoice.amount;
     }
-    
-    try out.write(html.invoice_table_total, .{.total = total});
+
+    try zts.printSection(data, "invoice_total", .{.total = total}, out);
 }
 ```
 
-Its quite simple - the ZTS templating engine simply splits the input file into segments delimited by .directives
+## ZTS Templates rely on your Zig code to drive the logic
 
-Then using the awesome power of Zig's comptime `fmt.print()` - you can pass structs to the print statement, and then use the `{[fieldname]:format}` syntax to derefence fields out of the struct, and apply standard formatting to them.
+You will notice that the pattern used here is that the Zig code is completely driving the flow of logic, and the "template" only serves 
+to provide a repository of static strings that can be looked up, and delivered at comptime.
+
+As far as "template engines" go - ZTS is just a fancy hashMap of strings that you have to drive yourself manually.
+
+This is an inversion of how templating libraries usually work ... where your code passes data to the template engine, which then drives
+the flow of the logic to produce the output.
+
+The traditional approach tends to get messy when you want to inject additional logic into the template generation, over and above simple range statements.
+
+Other approaches, such as JSX, employ a variety of character codes enable you to jump in and out of Javascript inside the template.
+
+or Go templates, which have their own go-like DSL, and the ability to pass a map of function pointers that the template can then callback into.
+
+There is also the Mustache standard, which offers an array iterator, and lambdas, and rendering of partials amongst other things.
+
+These are all great of course, but they also delegate the control away from your program, and into a DSL like environment that inevitably employs
+some magic to get the job done.
+
+In some instances, it may be more powerful (as well as simpler), to just drive all the logic directly and imperatively from your own code instead.
+
 
 ## Segmented vs Non-Segmented Templates
 
