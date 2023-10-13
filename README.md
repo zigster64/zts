@@ -29,13 +29,17 @@ keeping the control of this flow strictly inside your Zig code at all times.
 ZTS also uses Zig's standard `print` formatting to transform data through the template, so there is no additional DSL or formatting rules to learn.
 
 The other MAJOR difference is that ZTS is strictly comptime only templating. This brings a lot of benefits, such as :
+- Simplicity. There is just _less_ going on
 - Zero runtime parsing overhead
 - Runtime speed
 - Thorough compile time checking of both template and parameters
+- Mismatches between templates and logic are very unlikely to get past compilation, and raise their ugly heads at runtime
 
 And some negatives too, such as:
+- Build times do slow down due to comptime processing
 - Complete inability to have dynamically generated templates
 - Complete inability to modify the template at runtime
+- You can do some dynamic processing, and abuse the templates to some extent, but the pain level increases very quickly because of Zig comptime restrictions
 
 Choices are good. Its up to you to work out which approach best suits your project.
 
@@ -58,8 +62,16 @@ const zts = @import("zts");
 const out = std.io.getStdOut().writer();
 
 const data = @embedFile("foobar.txt");
-try out.print("{s}\n", zts.s(my_foobar, "foo"));
-try out.print("{s}\n", zts.s(my_foobar, "bar"));
+try out.print("foo says - {s}\n", zts.s(my_foobar, "foo"));
+try out.print("bar says - {s}\n", zts.s(my_foobar, "bar"));
+
+```
+
+produces the output 
+```
+foo says - I prefer daytime
+
+bar says - I like the nighttime
 
 ```
 
