@@ -14,7 +14,7 @@ As a HTML templating util, this covers a lot of bases, and provides a pretty san
 
 Lets have a look ...
 
-## Other Zig Templating tools
+## Differences vs other Zig Templating tools
 
 There are a number of excellent template engine tools for Zig, which use the traditional approach of passing a template + some declarations
 to a template library, which then controls the output of the data through the template.
@@ -24,9 +24,18 @@ https://github.com/batiati/mustache-zig  (an implementation of Mustache for Zig)
 https://github.com/MasterQ32/ZTT (a text template tool that uses code generation)
 
 ZTS uses an inversion of this common templating approach, by passing sections of your data through sections of the template, whilst
-keeping the control of this flow strictly inside your Zig code.
+keeping the control of this flow strictly inside your Zig code at all times.
 
 ZTS also uses Zig's standard `print` formatting to transform data through the template, so there is no additional DSL or formatting rules to learn.
+
+The other MAJOR difference is that ZTS is strictly comptime only templating. This brings a lot of benefits, such as :
+- Zero runtime parsing overhead
+- Runtime speed
+- Thorough compile time checking of both template and parameters
+
+And some negatives too, such as:
+- Complete inability to have dynamically generated templates
+- Complete inability to modify the template at runtime
 
 Choices are good. Its up to you to work out which approach best suits your project.
 
@@ -111,6 +120,52 @@ try zts.printSection(data, "other", .{}, out);
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
+
+## ZTS runtime / non-comptime helper functions
+
+If you want to pass data through template segments using the built in Zig `print` functions on the writer, then everything must be comptime.
+
+There are no exceptions to this, its just the way that Zig `print` works.
+
+If your template segments DO NOT have print formatting, do not need argument processing, and are just blocks of text,
+then you can use the `write` variant helper functions that ZTS provides.
+
+```zig
+try zts.writeHeader(data, out)`;
+try zts.writeSection(data, section, out);
+```
+
+There is also a `lookup()` function that takes runtime / dynamic labels, and returns a non-comptime string of the section ... or `null` if not found.
+Its a runtime version of the `s()` function, that can be used with dynamic labels.
+
+You can ONLY use the return data from `lookup()` in a non-comptime context though.
+
+
+example:
+```zig
+
+// you can do some fancy dynamic processing here
+const dynamic_template_section = zts.lookup(data, os.getenv("PLANET").?);
+if (dynamic_template_section == null) {
+   std.debug.print("Sorry, cannot find a section for the planet you are on");
+   return;
+}
+try out.writeAll(dynamic_template_section);
+
+// or you can do this using the write helper functions
+try zts.writeSection(data, os.getenv("PLANET"), out);  
+
+// but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
+try out.print(dynamic_template_section, .{customer_details});  // <<-- compile error ! dynamic_template_section is not comptime known
+
+// and you cant do this either, because s() demands comptime params too
+const printable_dynamic_section = zts.s(data, os.getenv("PLANET").?);  // <<-- compile error !  unable to resovle comptime value
+```
+
+Comptime restrictions can be a pain.
+
+ZTS `lookup()`, `writeHeader()`, and `writeSection()` might be able to help you out if you need to do some dynamic lookups .. or it might not.
+
 
 ## A more common HTML templating example
 
@@ -234,7 +289,7 @@ Hey There
 
 {{if language .eq "deutsch"}}
   Geschäftsbedingungen
-  Zahlung in den nächsten 7 Tagen
+  Zahlung 7 Tagen netto
 {{else}}
   Terms and conditons
   Payment Nett 7 days
@@ -253,21 +308,44 @@ Hey There
 
   Here is the proof ...
 
-.terms
+.terms_en
   Terms and conditons
   Payment Nett 7 days
 .terms_de
   Geschäftsbedingungen
-  Zahlung in den nächsten 7 Tagen
+  Zahlung 7 Tagen netto
+.terms_es
+  Términos y condiciones
+  Pago neto 7 días
+.terms_pt
+  Termos e Condições
+  Pagamento líquido em 7 dias
+.terms_fr
+  Termes et conditions
+  Paiement net 7 jours
+.terms_hi
+  नियम और शर्तें
+  भुगतान नेट 7 दिन
+.terms_jp
+  利用規約
+  次の7日でお支払い
 ```
 
 ```zig
-try zts.printHeader(data, .{}, out);
-switch (language) {
- .deutsch => try zts.printSection(data, "terms_de", .{}, out);
- else => try zts.printSection(data, "terms", .{}, out);
+
+// dynamically create the label at runtime, based on the LANG env var
+// restriction here is that because the section label is dynamic, it cant be comptime
+// ... and therefore cant be used with the print variants
+
+try terms_section = std.fmt.allocPrint(allocator, "terms_{s}", std.os.getenv("LANG").?[0..2]);
+defer allocator.free(section);
+
+try zts.writeHeader(data, out);
+try zts.writeSection(data, terms_section, out);
 }
 ```
+
+(see example in test cases inside the code in zts.zig)
 
 Or we can even mix up the order of sections in the output depending on some variable :
 
@@ -300,36 +378,6 @@ Syntactically, the `.directive` in the template must obey these rules :
 
 Any lines that do not obey all of the above rules are considered as content, and not a directive.
 
-Even then, things can get messy if the content that you are wrapping in a template happens to also happens to include text that obeys these rules.
-
-(TODO - add an alternative directive as descibed here)
-
-In that case, you can use the alternative HTML-esque `<# directive />` syntax to create a templating directive in your file. 
-
-
-Example :
-```html
-<# header />
-
-<h1>Hello World</h1>
-
-    <div>Here is some
-        .content
-    that contains text that 
-    could be 
-    .mistaken
-    for a template directive
-    </div>
-
-    <# disclaimer />
-    <div>
-    But actually its
-    .fine
-    because we are using the 
-    .alternative directive syntax
-    in this template instead
-    </div>
-```
 
 ## Content that occurs before the first directive
 
