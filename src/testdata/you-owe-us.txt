@@ -1,0 +1,9 @@
+Hey there
+  You owe us some money
+
+.terms_en
+  Terms and conditons
+  Payment Nett 7 days
+.terms_de
+ Geschäftsbedingungen
+ Zahlung in den nächsten 7 Tagen

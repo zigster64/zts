@@ -85,12 +85,100 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
     @compileError(directiveNotFound);
 }
 
+// lookup will return the section from the data, as a runtime known string, or null if not found
+pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
+    var mode: Mode = .find_directive;
+    var maybe_directive_start: usize = 0;
+    var directive_start: usize = 0;
+    var content_start: usize = 0;
+    var content_end: usize = 0;
+    var last_start_of_line: usize = 0;
+
+    for (str, 0..) |c, index| {
+        switch (mode) {
+            .find_directive => {
+                switch (c) {
+                    '.' => {
+                        maybe_directive_start = index;
+                        mode = .reading_directive_name;
+                        // @compileLog("maybe new directive at", maybe_directive_start);
+                    },
+                    ' ', '\t' => {}, // eat whitespace
+                    '\n' => {
+                        last_start_of_line = index + 1;
+                    },
+                    else => mode = .content_line,
+                }
+            },
+            .reading_directive_name => {
+                switch (c) {
+                    '\n' => {
+                        if (directive == null) {
+                            // then content is the first unlabelled block, so we can return now
+                            return str[0..last_start_of_line];
+                        }
+                        if (content_end > 0) {
+                            // that really was a directive following our content then, so we now have the content we are looking for
+                            content_end = last_start_of_line;
+                            return str[content_start..content_end];
+                        }
+                        // found a new directive - we need to patch the value of the previous content then
+                        directive_start = maybe_directive_start;
+                        const directive_name = str[directive_start + 1 .. index];
+                        content_start = index + 1;
+                        if (std.mem.eql(u8, directive_name, directive.?)) {
+                            content_end = str.len - 1;
+                            // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
+                        }
+                        mode = .content_line;
+                    },
+                    ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                        // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
+                        mode = .content_line;
+                        maybe_directive_start = directive_start;
+                    },
+                    else => {},
+                }
+            },
+            .content_line => { // just eat the rest of the line till the next line
+                switch (c) {
+                    '\n' => {
+                        mode = .find_directive;
+                        last_start_of_line = index + 1;
+                    },
+                    else => {},
+                }
+            },
+        }
+    }
+
+    if (content_end > 0) {
+        return str[content_start .. content_end + 1];
+    }
+
+    if (directive == null) {
+        return str;
+    }
+
+    return null;
+}
+
 pub fn printHeader(comptime str: []const u8, args: anytype, out: anytype) !void {
     try out.print(comptime s(str, null), args);
 }
 
 pub fn printSection(comptime str: []const u8, comptime section: []const u8, args: anytype, out: anytype) !void {
     try out.print(comptime s(str, section), args);
+}
+
+pub fn writeHeader(str: []const u8, out: anytype) !void {
+    const data = lookup(str, null);
+    if (data != null) try out.writeAll(data.?);
+}
+
+pub fn writeSection(str: []const u8, section: []const u8, out: anytype) !void {
+    const data = lookup(str, section);
+    if (data != null) try out.writeAll(data.?);
 }
 
 test "data with no sections, and formatting" {
@@ -163,4 +251,19 @@ test "html file with multiple sections and formatting" {
     // compare to golden file
     const expected_data = @embedFile("testdata/customer_details.expected.html");
     try std.testing.expectEqualSlices(u8, expected_data, list.items);
+}
+
+test "statement in english or german based on LANG env var - runtime only" {
+    var out = std.io.getStdErr().writer();
+    const data = @embedFile("testdata/you-owe-us.txt");
+
+    // use environment
+    var lang = std.os.getenv("LANG").?[0..2];
+
+    try writeHeader(data, out);
+    try writeSection(data, "terms_" ++ lang, out);
+
+    // try it again in german
+    lang = "de";
+    try writeSection(data, "terms_" ++ lang, out);
 }
