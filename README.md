@@ -1,9 +1,5 @@
 # ZTS
 
-Currently published under the `DTT` Licence (Dont Touch This), because its not baked yet !!
-
-Please wait for v0.0.1
-
 # Zig Templates made Simple (ZTS)
 
 ![zts](https://github.com/zigster64/zts/blob/main/docs/zts.jpg?raw=true)
@@ -18,12 +14,23 @@ As a HTML templating util, this covers a lot of bases, and provides a pretty san
 
 Lets have a look ...
 
-## Difference to other templating tools
+## Other Zig Templating tools
 
+There are a number of excellent template engine tools for Zig, which use the traditional approach of passing a template + some declarations
+to a template library, which then controls the output of the data through the template.
 
+https://github.com/batiati/mustache-zig  (an implementation of Mustache for Zig)
 
+https://github.com/MasterQ32/ZTT (a text template tool that uses code generation)
 
-## Very Basic Example
+ZTS uses an inversion of this common templating approach, by passing sections of your data through sections of the template, whilst
+keeping the control of this flow strictly inside your Zig code.
+
+ZTS also uses Zig's standard `print` formatting to transform data through the template, so there is no additional DSL or formatting rules to learn.
+
+Choices are good. Its up to you to work out which approach best suits your project.
+
+## ZTS - Very Basic Example
 
 Lets say you have a Template file `foobar.txt` that looks like this :
 
@@ -73,7 +80,7 @@ try out.print(zts.s(data, "bar"), .{"nighttime"});
 
 Use of the `s(data, section_name)` function is provided as a low-level utility.
 
-Putting `zts.s(data, section_name)` name everywhere is a bit verbose, and gets a bit messy very quickly. 
+Putting `zts.s(data, section_name)` everywhere is a bit verbose, and gets a bit messy very quickly. 
 
 ZTS provides helper functions that make it easier to print.
 
@@ -89,11 +96,11 @@ I prefer {s}
 
 const data = @embedFile("foobar.txt");
 try zts.printSection(data, "foo", .{"daytime"}, out);
-try zts.printSection(data, "bar", .{"daytime"}, out);
+try zts.printSection(data, "bar", .{"nighttime"}, out);
 
 ```
 
-Because everything is happening at comptime, ff your template file and your Zig code get out of sync due to ongoing changes,
+Because everything is happening at comptime, if your template file and your Zig code get out of sync due to ongoing changes,
 nothing to fear ... Zig will pick that up at compile time, and throw an error about missing sections in your templates, as 
 well as the standard compile errors about parameters not matching the expected fields in the template.
 
@@ -182,16 +189,18 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 You will notice that the pattern used here is that the Zig code is completely driving the flow of logic, and the "template" only serves 
 to provide a repository of static strings that can be looked up, and delivered at comptime.
 
-As far as "template engines" go - ZTS is just a fancy hashMap of strings that you have to drive yourself manually.
+As far as "template engines" go - ZTS is just like a fancy table of strings that you have to drive yourself manually.
 
 This is an inversion of how templating libraries usually work ... where your code passes data to the template engine, which then drives
 the flow of the logic to produce the output.
 
 The traditional approach tends to get messy when you want to inject additional logic into the template generation, over and above simple range statements.
 
-Other approaches, such as JSX, employ a variety of character codes enable you to jump in and out of Javascript inside the template.
+Other approaches, such as JSX, employ a variety of character codes enabling you to jump in and out of Javascript inside the template.
 
-or Go templates, which have their own go-like DSL, and the ability to pass a map of function pointers that the template can then callback into.
+or Go templates, which have their own go-like DSL, and the ability to pass a map of function pointers that the template can callback into.
+
+See https://pkg.go.dev/html/template for details of Go HTML templating.
 
 There is also the Mustache standard, which offers an array iterator, and lambdas, and rendering of partials amongst other things.
 
@@ -200,36 +209,85 @@ some magic to get the job done.
 
 In some instances, it may be more powerful (as well as simpler), to just drive all the logic directly and imperatively from your own code instead.
 
+If you want the traditional approach, whilst using Zig, have a look at 
 
-## Segmented vs Non-Segmented Templates
+https://github.com/batiati/mustache-zig
 
-A template is considered to be segmented into fields IF the very first character in the file is `.` AND the first line contains no whitespaces.
+with examples of mustache-zig used in the Zap (web server) project here :
 
-In other words - the first line is a valid template `.directive`
+https://github.com/zigzap/zap/blob/master/examples/mustache/mustache.zig
 
-If the file is seen to be segmented, then the returned struct will contain fields matching each segment.
+There are some examples of ZTS used with the http.zig library here :
 
-If the file is NOT segmented, then the returned struct will contain only 1 field, named `all`, which contains the entire template.
+https://github.com/zigster64/zig-zag-zoe
 
-example template `foobar.txt`
 
+## Selectively print sections from the template
+
+This is normally done by adding syntax to the template such as
 ```
-Foo prefers the daytime
-Bar prefers the nighttime
+Hey There
+  You owe us some money !
+
+  Here is the proof ...
+
+{{if language .eq "deutsch"}}
+  Geschäftsbedingungen
+  Zahlung in den nächsten 7 Tagen
+{{else}}
+  Terms and conditons
+  Payment Nett 7 days
+{{endif}}
 ```
 
-Zig code that uses the template
+But we dont need to add any control flow inside the template in some non-Zig templating language ... we can just do it from the Zig code
+because the whole "template" is nothing more than a map of section tags to blocks of text.
+
+You dont even need to print them all !
+
+Example:
+```
+Hey There
+  You owe us some money !
+
+  Here is the proof ...
+
+.terms
+  Terms and conditons
+  Payment Nett 7 days
+.terms_de
+  Geschäftsbedingungen
+  Zahlung in den nächsten 7 Tagen
+```
+
 ```zig
-var data = zts.template("foobar.txt"){}
-std.debug.print("I am foobar, and I only have 1 field  {s}\n", .{data.all});
+try zts.printHeader(data, .{}, out);
+switch (language) {
+ .deutsch => try zts.printSection(data, "terms_de", .{}, out);
+ else => try zts.printSection(data, "terms", .{}, out);
+}
 ```
 
-NOTE that segmented data also has the `.all` field, which contains the complete template contents, including any `.directives`
+Or we can even mix up the order of sections in the output depending on some variable :
+
+```zig
+if (is_northern_hemisphere) try zts.printHeader(data, .{}, out);
+switch (language) {
+ .deutsch => try zts.printSection(data, "terms_de", .{}, out);
+ else => try zts.printSection(data, "terms", .{}, out);
+}
+if (is_southern_hemisphere) try zts.printHeader(data, .{}, out);
+```
+
+... not sure how you could even do that in a normal templating flow ?
+
+So again, its not for everyone, but there are definitely some cases where its just simpler and more powerful to keep the control inside your
+Zig code rather than a templating engine.
 
 
-## Segment Declaration Syntax
+# Section Declaration Syntax
 
-In the template examples above, segments in the template (and therefore fields in the comptime generated struct) are simply denoted by a line that has a `.directive` and nothing else.
+In the template examples above, sections in the template are simply denoted by a line that has a `.directive` and nothing else.
 
 Syntactically, the `.directive` in the template must obey these rules :
 
@@ -237,7 +295,7 @@ Syntactically, the `.directive` in the template must obey these rules :
 - Begins with a `.` character
 - Contains just the directive word with no whitespace, and no templated content
 - Directive name cannot contain special characters [] {} - : \t
-- Is a complete line, terminated by a `CR` or `LF`
+- Is a complete line, terminated by a `\n` 
 
 Any lines that do not obey all of the above rules are considered as content, and not a directive.
 
@@ -272,4 +330,32 @@ Example :
     </div>
 ```
 
+## Content that occurs before the first directive
 
+All content that occurs before the first directive can be accessed by passing `null` as the section name
+
+Example:
+```html
+<div>
+   Everything in here is leading content
+
+   .details
+   <div>... some details in here</div>
+   .end_details
+
+   ... more content
+</div>
+```
+
+If you pass `null` as the section name, you get everything up to the first .directive
+
+```zig
+const data = @embedFile("foobar.txt");
+const header_content = zts.s(data, null);
+```
+
+Or you can use the `printHeader(data, args, out)` helper function to do this for you in a print statement
+```zig
+const data = @embedFile("foobar.txt");
+try zts.printHeader(data, .{}, out);
+```
