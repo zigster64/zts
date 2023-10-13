@@ -302,7 +302,7 @@ https://github.com/zigster64/zig-zag-zoe
 
 ## Selectively print sections from the template
 
-This is normally done by adding syntax to the template such as
+In the traditional Template-Driven approach, this is normally done by adding syntax to the template such as
 ```
 Hey There
   You owe us some money !
