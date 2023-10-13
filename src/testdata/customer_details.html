@@ -1,9 +1,13 @@
-.details
 <div>
-  <h1>Customer</h1>
+  <h1>Summary Stamement Page</h1>
+  Details in this file, up to the 1st .section
+  are included in the "printHeader()" function.
+
+  .customer_details
+  <h2>Customer</h2>
   <p>Name: {[name]s}</p>
   <p>Address: {[address]s}</p>
-  <p>Credit Limit: $ {[credit]d:.2}-</p>
+  <p>Credit Limit: $ {[credit]d:.2}</p>
 
   .invoice_table
   <h2>Invoices</h2>
@@ -29,4 +33,8 @@
     </tr>
 
   </table>
+
+  Note that there is no need to add a footer section -
+  everything after the last .section is printed when
+  that .section is printed.
 </div>

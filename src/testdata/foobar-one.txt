@@ -1,3 +1,0 @@
-.foo
-I like the daytime
-and also the nighttime
