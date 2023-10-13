@@ -404,7 +404,7 @@ Any lines that do not obey all of the above rules are considered as content, and
 
 ## Content that occurs before the first directive
 
-All content that occurs before the first directive can be accessed by passing `null` as the section name
+All content that occurs before the first directive is considered to be the "header" of the document.
 
 Example:
 ```html
@@ -419,15 +419,22 @@ Example:
 </div>
 ```
 
-If you pass `null` as the section name, you get everything up to the first .directive
+Or you can use the `printHeader(data, args, out)` helper function to print out this header segment.
+```zig
+const data = @embedFile("foobar.txt");
+try zts.printHeader(data, .{}, out);
+
+// or the write variant with no extra parameters 
+try zts.writeHeader(data, out);
+```
+
+You can access this header section using the `s()` function, and passing `null` as the section name.
 
 ```zig
 const data = @embedFile("foobar.txt");
 const header_content = zts.s(data, null);
+
+// or use lookup for the runtime variant
+const header_content = zts.lookp(data, null); 
 ```
 
-Or you can use the `printHeader(data, args, out)` helper function to do this for you in a print statement
-```zig
-const data = @embedFile("foobar.txt");
-try zts.printHeader(data, .{}, out);
-```
