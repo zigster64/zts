@@ -372,12 +372,9 @@ try zts.writeSection(data, terms_section, out);
 Or we can even mix up the order of sections in the output depending on some variable :
 
 ```zig
-if (is_northern_hemisphere) try zts.printHeader(data, .{}, out);
-switch (language) {
- .deutsch => try zts.printSection(data, "terms_de", .{}, out);
- else => try zts.printSection(data, "terms", .{}, out);
-}
-if (is_southern_hemisphere) try zts.printHeader(data, .{}, out);
+if (is_northern_hemisphere) try zts.writeHeader(data, out);
+try zts.writeSection(data, terms_section, out);
+if (is_southern_hemisphere) try zts.writeHeader(data, out);
 ```
 
 ... not sure how you could even do that in a normal templating flow ?
