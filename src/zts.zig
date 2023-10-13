@@ -7,7 +7,7 @@ const Mode = enum {
 };
 
 // s will return the section from the data, as a comptime known string
-pub fn s(comptime str: []const u8, comptime directive: []const u8) []const u8 {
+pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
     comptime var mode: Mode = .find_directive;
     comptime var maybe_directive_start = 0;
     comptime var directive_start = 0;
@@ -34,8 +34,12 @@ pub fn s(comptime str: []const u8, comptime directive: []const u8) []const u8 {
             .reading_directive_name => {
                 switch (c) {
                     '\n' => {
+                        if (directive == null) {
+                            // then content is the first unlabelled block, so we can return now
+                            return str[0..last_start_of_line];
+                        }
                         if (content_end > 0) {
-                            // that really was a directive then, so we now have the content we are looking for
+                            // that really was a directive following our content then, so we now have the content we are looking for
                             content_end = last_start_of_line;
                             return str[content_start..content_end];
                         }
@@ -43,7 +47,7 @@ pub fn s(comptime str: []const u8, comptime directive: []const u8) []const u8 {
                         directive_start = maybe_directive_start;
                         const directive_name = str[directive_start + 1 .. index];
                         content_start = index + 1;
-                        if (comptime std.mem.eql(u8, directive_name, directive)) {
+                        if (comptime std.mem.eql(u8, directive_name, directive.?)) {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
@@ -70,52 +74,93 @@ pub fn s(comptime str: []const u8, comptime directive: []const u8) []const u8 {
     }
 
     if (content_end > 0) {
-        return str[content_start..content_end];
+        return str[content_start .. content_end + 1];
     }
 
-    comptime var directiveNotFound = "Data does not contain any section labelled '" ++ directive ++ "'\nMake sure there is a line in your data that start with ." ++ directive;
+    if (directive == null) {
+        return str;
+    }
+
+    comptime var directiveNotFound = "Data does not contain any section labelled '" ++ directive.? ++ "'\nMake sure there is a line in your data that start with ." ++ directive.?;
     @compileError(directiveNotFound);
 }
 
-pub fn print(out: anytype, comptime str: []const u8, comptime section: []const u8, args: anytype) !void {
+pub fn printHeader(comptime str: []const u8, args: anytype, out: anytype) !void {
+    try out.print(comptime s(str, null), args);
+}
+
+pub fn printSection(comptime str: []const u8, comptime section: []const u8, args: anytype, out: anytype) !void {
     try out.print(comptime s(str, section), args);
 }
 
-test "all.txt" {
-    var out = std.io.getStdErr().writer();
+test "data with no sections, and formatting" {
+    const data = @embedFile("testdata/all.txt");
     try std.testing.expectEqual(data.len, 78);
 
     // test that we can use the data as a comptime known format to pass through print
     var formatted_data = try std.fmt.allocPrint(std.testing.allocator, data, .{"embedded formatting"});
-    defer std.testing.allocator.free(formatted_data);
     try std.testing.expectEqual(formatted_data.len, 94);
+    std.testing.allocator.free(formatted_data);
+
+    // TODO - add a test that calling printHeader() on a file with no sections accurately dumps the whole file
+    // try printHeader(data, .{"hi from the formatter"}, std.io.getStdErr().writer());
 }
 
-test "foobar with multiple sections" {
-    var out = std.io.getStdErr().writer();
-    try out.writeAll("\n-----------------foobar.txt template with multiple sections----------------------\n");
-
-    const data = @embedFile("testdata/foobar.txt");
-
+test "foobar with multiple sections and no formatting" {
+    const data = @embedFile("testdata/foobar1.txt");
+    try std.testing.expectEqual(data.len, 52);
     const foo = s(data, "foo");
-    _ = foo;
-    // try std.testing.expectEqual(55, foo.len);
+    try std.testing.expectEqualSlices(u8, foo, "I like the daytime\n");
     const bar = s(data, "bar");
-    _ = bar;
-    // try std.testing.expectEqual(55, bar.len);
+    try std.testing.expectEqualSlices(u8, bar, "I prefer the nighttime\n");
+}
 
-    // expect compile error
-    // var xx = s(data, "xx");
+test "html file with multiple sections and formatting" {
+    var list = std.ArrayList(u8).init(std.testing.allocator);
+    defer list.deinit();
 
-    try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data});
+    // var out = std.io.getStdErr().writer();
+    var out = list.writer();
+    const data = @embedFile("testdata/customer_details.html");
 
-    try out.print("foo = '{s}'\n", .{s(data, "foo")});
-    try out.print("bar = '{s}'\n", .{s(data, "bar")});
+    const Invoice = struct {
+        date: []const u8,
+        details: []const u8,
+        amount: f32,
+    };
 
-    // is the return of s a valid comptime string ?
-    try out.print("-------foo as comptime format-----\n", .{});
-    try out.print(s(data, "foo"), .{});
+    var customer = .{
+        .name = "Joe Blow",
+        .address = "21 Main Street",
+        .credit = 100.0,
+    };
+    var invoices = &[_]Invoice{
+        .{ .date = "2023-10-01", .details = "New Hoodie", .amount = 80.99 },
+        .{ .date = "2023-10-03", .details = "Hotdog with Sauce", .amount = 4.50 },
+        .{ .date = "2023-10-04", .details = "Mystery Gift", .amount = 12.00 },
+        .{ .date = "2023-10-12", .details = "Model Aircraft", .amount = 48.00 },
+        .{ .date = "2023-10-24", .details = "Chocolate Milkshake", .amount = 80.99 },
+    };
 
-    try out.print("-------use print helper function-----\n", .{});
-    try print(out, data, "foo", .{});
+    try printHeader(data, .{}, out);
+
+    // print the customer details
+    try printSection(data, "customer_details", customer, out);
+
+    // print a table of customer invoices
+    try printSection(data, "invoice_table", .{}, out);
+    var total: f32 = 0.0;
+    inline for (invoices) |inv| {
+        try printSection(data, "invoice_row", inv, out);
+        total += inv.amount;
+    }
+    try printSection(data, "invoice_total", .{ .total = total }, out);
+
+    // uncomment these to see the output on the console
+    // var stderr = std.io.getStdErr().writer();
+    // try stderr.writeAll(list.items);
+
+    // compare to golden file
+    const expected_data = @embedFile("testdata/customer_details.expected.html");
+    try std.testing.expectEqualSlices(u8, expected_data, list.items);
 }
