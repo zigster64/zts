@@ -377,6 +377,10 @@ try zts.writeSection(data, terms_section, out);
 if (is_southern_hemisphere) try zts.writeHeader(data, out);
 ```
 
+So for our US and EU customers, they get the Notice header followed by the terms and conditions.
+
+For our AU, NZ, and Sth American customers, because they are upside down, they get the terms and conditions first followed by the Notice header.
+
 ... not sure how you could even do that in a normal templating flow ?
 
 So again, its not for everyone, but there are definitely some cases where its just simpler and more powerful to keep the control inside your
