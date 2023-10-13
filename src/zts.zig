@@ -6,93 +6,16 @@ const Mode = enum {
     content_line,
 };
 
-pub fn Embed(comptime path: []const u8) type {
-    return Template(@embedFile(path));
-}
-
-pub fn Template(comptime str: []const u8) type {
-    @setEvalBranchQuota(500000);
-    const decls = &[_]std.builtin.Type.Declaration{};
-
-    const all = std.builtin.Type.StructField{
-        .name = "all",
-        .type = *const [str.len]u8,
-        .is_comptime = false,
-        .alignment = 0,
-        .default_value = @ptrCast(&str[0..]),
-    };
-
-    // empty strings, or strings that dont start with a .directive - just map the whole string to .all and return early
-    if (str.len < 1 or str[0] != '.') {
-        var one_field: [1]std.builtin.Type.StructField = undefined;
-        one_field[0] = all;
-
-        return @Type(.{
-            .Struct = .{
-                .layout = .Auto,
-                .fields = &one_field,
-                .decls = decls,
-                .is_tuple = false,
-            },
-        });
-    }
-
-    // PASS 1 - just count up the number of directives, so we can create the fields array of known size
+// s will return the section from the data, as a comptime known string
+pub fn s(comptime str: []const u8, comptime directive: []const u8) []const u8 {
     comptime var mode: Mode = .find_directive;
-    comptime var num_fields = 0;
-    for (str) |c| {
-        // @compileLog(c);
-        switch (mode) {
-            .find_directive => {
-                switch (c) {
-                    '.' => mode = .reading_directive_name,
-                    ' ', '\n' => {},
-                    else => mode = .content_line,
-                }
-            },
-            .reading_directive_name => {
-                switch (c) {
-                    '\n' => {
-                        // got the end of a directive !
-                        num_fields += 1;
-                        mode = .find_directive;
-                    },
-                    ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => mode = .content_line,
-                    else => {},
-                }
-            },
-            .content_line => {
-                switch (c) {
-                    '\n' => mode = .find_directive,
-                    else => {},
-                }
-            },
-        }
-    }
-
-    // @compileLog("num_fields =", num_fields);
-    if (num_fields < 1) {
-        @compileError("No fields found");
-    }
-
-    // now we know how many fields there should be, so is safe to statically define the fields array
-    comptime var fields: [num_fields + 1]std.builtin.Type.StructField = undefined;
-    fields[0] = all;
-
-    comptime var directive_start = 0;
     comptime var maybe_directive_start = 0;
+    comptime var directive_start = 0;
     comptime var content_start = 0;
-    comptime var field_num = 1;
+    comptime var content_end = 0;
+    comptime var last_start_of_line = 0;
 
-    // PASS 2
-    // this is a bit more involved, as we cant allocate, and we want to do this in 1 single sweep of the data.
-    // Scan through the data again, looking for a directive, and keep track of the offset of the start of content.
-    // It uses 2 vars - maybe_directive_start is used when it thinks there might be a new directive, which
-    // reverts back to the last good directive_start when it is detected that its a false reading
-    // When the next directive is seen, then the content block in the previous field needs to be truncated
-    mode = .find_directive;
-    for (str, 0..) |c, index| {
-        // @compileLog(c, index);
+    inline for (str, 0..) |c, index| {
         switch (mode) {
             .find_directive => {
                 switch (c) {
@@ -101,41 +24,33 @@ pub fn Template(comptime str: []const u8) type {
                         mode = .reading_directive_name;
                         // @compileLog("maybe new directive at", maybe_directive_start);
                     },
-                    ' ', '\t', '\n' => {}, // eat whitespace
+                    ' ', '\t' => {}, // eat whitespace
+                    '\n' => {
+                        last_start_of_line = index + 1;
+                    },
                     else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
                 switch (c) {
                     '\n' => {
+                        if (content_end > 0) {
+                            // that really was a directive then, so we now have the content we are looking for
+                            content_end = last_start_of_line;
+                            return str[content_start..content_end];
+                        }
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
-                        if (field_num > 1) {
-                            // dont need to adjust the default value, because its the same address, just the size of the block its pointing to
-                            var adjusted_len = directive_start - content_start;
-                            fields[field_num - 1].type = *const [adjusted_len]u8;
-                            @compileLog("patched previous to", fields[field_num - 1]);
-                        }
                         const directive_name = str[directive_start + 1 .. index];
-                        const dlen = str.len - index;
-                        // const default_value: ?*const anyopaque = @ptrCast(&str[content_start..]);
                         content_start = index + 1;
-                        if (content_start < str.len) {
-                            fields[field_num] = comptime std.builtin.Type.StructField{
-                                .name = directive_name,
-                                .type = *const [dlen]u8,
-                                // .default_value = default_value,
-                                // .default_value = @ptrCast(&"Nothing to see here"),
-                                .default_value = @ptrCast(&str[content_start..]),
-                                .is_comptime = true,
-                                .alignment = 0,
-                            };
-                            @compileLog("field", field_num, fields[field_num]);
+                        if (comptime std.mem.eql(u8, directive_name, directive)) {
+                            content_end = str.len - 1;
+                            // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
-                        field_num += 1;
                         mode = .content_line;
                     },
                     ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                        // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_line;
                         maybe_directive_start = directive_start;
                     },
@@ -144,115 +59,63 @@ pub fn Template(comptime str: []const u8) type {
             },
             .content_line => { // just eat the rest of the line till the next line
                 switch (c) {
-                    '\n' => mode = .find_directive,
+                    '\n' => {
+                        mode = .find_directive;
+                        last_start_of_line = index + 1;
+                    },
                     else => {},
                 }
             },
         }
     }
 
-    @compileLog("fields", fields);
-
-    return @Type(comptime .{
-        .Struct = .{
-            .layout = .Auto,
-            .fields = &fields,
-            .decls = decls,
-            .is_tuple = false,
-        },
-    });
-}
-
-test "manually defining a struct" {
-    var out = std.io.getStdErr().writer();
-    try out.writeAll("\n------------------manually defined struct----------------------\n");
-
-    const Thing = struct {
-        comptime name: *const [10:0]u8 = "Name: {s}\n",
-        comptime address: *const [10:0]u8 = "Addr: {s}\n",
-    };
-
-    inline for (@typeInfo(Thing).Struct.fields, 0..) |f, i| {
-        try out.print("Thing field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
+    if (content_end > 0) {
+        return str[content_start..content_end];
     }
 
-    var thing = Thing{};
-    try out.print("typeof thing.name is {}\n", .{@TypeOf(thing.name)});
-    try out.print(thing.name, .{"Rupert Montgomery"});
-    try out.print(thing.address, .{"21 Main Street"});
+    comptime var directiveNotFound = "Data does not contain any section labelled '" ++ directive ++ "'\nMake sure there is a line in your data that start with ." ++ directive;
+    @compileError(directiveNotFound);
 }
 
-fn GenerateType() type {
-    comptime var fields: [2]std.builtin.Type.StructField = undefined;
-    comptime var decls = &[_]std.builtin.Type.Declaration{};
-    fields[0] = .{
-        .name = "name",
-        .type = *const [10]u8,
-        .is_comptime = true,
-        .alignment = 0,
-        .default_value = @ptrCast(&"Name: {s}\n"),
-    };
-    fields[1] = .{
-        .name = "address",
-        .type = *const [10]u8,
-        .is_comptime = true,
-        .alignment = 0,
-        .default_value = @ptrCast(&"Addr: {s}\n"),
-    };
-    return @Type(.{
-        .Struct = .{
-            .layout = .Auto,
-            .fields = &fields,
-            .decls = decls,
-            .is_tuple = false,
-        },
-    });
+pub fn print(out: anytype, comptime str: []const u8, comptime section: []const u8, args: anytype) !void {
+    try out.print(comptime s(str, section), args);
 }
 
-test "generated struct" {
+test "all.txt" {
     var out = std.io.getStdErr().writer();
-    try out.writeAll("\n------------------generated struct----------------------\n");
+    try std.testing.expectEqual(data.len, 78);
 
-    comptime var Thing = GenerateType();
-
-    inline for (@typeInfo(Thing).Struct.fields, 0..) |f, i| {
-        try out.print("Thing field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
-    }
-
-    const thing = Thing{};
-    try out.print("typeof thing.name is {}\n", .{@TypeOf(thing.name)});
-    try out.print(thing.name, .{"Rupert Montgomery"});
-    try out.print(thing.address, .{"21 Main Street"});
+    // test that we can use the data as a comptime known format to pass through print
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, data, .{"embedded formatting"});
+    defer std.testing.allocator.free(formatted_data);
+    try std.testing.expectEqual(formatted_data.len, 94);
 }
 
-test "template with no segments" {
+test "foobar with multiple sections" {
     var out = std.io.getStdErr().writer();
-    try out.writeAll("\n-----------------template with no segments----------------------\n");
-    const t = Embed("testdata/all.txt");
-    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        try out.print("all.txt field={} name={s} type={} is_comptime={} default_value={?}\n", .{ i, f.name, f.type, f.is_comptime, f.default_value });
-    }
+    try out.writeAll("\n-----------------foobar.txt template with multiple sections----------------------\n");
 
-    const data = Embed("testdata/all.txt"){};
-    try out.print("typeof data.all is {}\n", .{@TypeOf(data.all)});
-    try out.print(data.all, .{"formatting"});
-    try std.testing.expectEqual(78, data.all.len);
-}
+    const data = @embedFile("testdata/foobar.txt");
 
-test "template with multiple segments" {
-    var out = std.io.getStdErr().writer();
-    try out.writeAll("\n-----------------template with multiple segments----------------------\n");
+    const foo = s(data, "foo");
+    _ = foo;
+    // try std.testing.expectEqual(55, foo.len);
+    const bar = s(data, "bar");
+    _ = bar;
+    // try std.testing.expectEqual(55, bar.len);
 
-    const t = Embed("testdata/foobar.txt");
-    inline for (@typeInfo(t).Struct.fields, 0..) |f, i| {
-        std.debug.print("foobar.txt has field {} name {s} type {}'\n", .{ i, f.name, f.type });
-    }
-    const data = Embed("testdata/foobar.txt"){};
+    // expect compile error
+    // var xx = s(data, "xx");
 
-    try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data.all});
-    try out.print("\nfoo: '{s}'\n", .{data.foo});
-    try out.print("\nbar: '{s}'\n", .{data.bar});
-    try std.testing.expectEqual(52, data.all.len);
-    try std.testing.expectEqual(19, data.foo.len);
-    try std.testing.expectEqual(24, data.bar.len);
+    try out.print("Whole contents of foobar.txt is:\n---------------\n{s}\n---------------\n", .{data});
+
+    try out.print("foo = '{s}'\n", .{s(data, "foo")});
+    try out.print("bar = '{s}'\n", .{s(data, "bar")});
+
+    // is the return of s a valid comptime string ?
+    try out.print("-------foo as comptime format-----\n", .{});
+    try out.print(s(data, "foo"), .{});
+
+    try out.print("-------use print helper function-----\n", .{});
+    try print(out, data, "foo", .{});
 }
