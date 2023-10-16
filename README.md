@@ -91,6 +91,10 @@ Putting `zts.s(tmpl, section_name)` everywhere is a bit verbose, and gets a bit 
 
 ZTS provides helper functions that make it easier to print.
 
+`zts.print(tmpl, section_name, args, writer)` works like `print()` in Zig.
+
+`zts.write(tmpl, section_name, writer)` works like `write()` in Zig.
+
 
 ```
 .foo
@@ -103,8 +107,8 @@ I prefer {s}
 
 const tmpl = @embedFile("foobar.txt");
 
-try zts.printSection(tmpl, "foo", .{"daytime"}, out);
-try zts.printSection(tmpl, "bar", .{"nighttime"}, out);
+try zts.print(tmpl, "foo", .{"daytime"}, out);
+try zts.print(tmpl, "bar", .{"nighttime"}, out);
 
 ```
 
@@ -115,7 +119,7 @@ well as the standard compile errors about parameters not matching the expected f
 for example, if you add this to the code above :
 
 ```zig
-try zts.printSection(tmpl, "other", .{}, out);
+try zts.print(tmpl, "other", .{}, out);
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
@@ -140,10 +144,10 @@ then you can use the `write` variant helper functions that ZTS provides.
 
 ```zig
 try zts.writeHeader(template, out);
-try zts.writeSection(template, section, out);
+try zts.write(template, section, out);
 ```
 
-When using `writeSection(template, section, out)` ... if the section is null, or cannot be found in the data, then writeSection will
+When using `write(template, section, out)` ... if the section is null, or cannot be found in the data, then write() will
 print nothing. 
 
 There is also a `lookup()` function that takes runtime / dynamic labels, and returns a non-comptime string of the section ... or `null` if not found.
@@ -165,7 +169,7 @@ try out.writeAll(dynamic_template_section);
 
 // or you can do this using the write helper functions
 // note that if there is no PLANET env, then nothing is printed
-try zts.writeSection(tmpl, os.getenv("PLANET"), out);  
+try zts.write(tmpl, os.getenv("PLANET"), out);  
 
 // but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
 try out.print(dynamic_template_section, .{customer_details});  // <<-- compile error ! dynamic_template_section is not comptime known
@@ -176,7 +180,7 @@ const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- c
 
 Comptime restrictions can be a pain.
 
-ZTS `lookup()`, `writeHeader()`, and `writeSection()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
+ZTS `lookup()`, `writeHeader()`, and `write()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
 depending on how deep a hole of meta programming you are in.
 
 
@@ -231,15 +235,15 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
   var tmpl = @embedFile("html/financial_statement.html");
    
    try zts.writeHeader(tmpl, out);
-   try zts.printSection(tmpl, "customer_details", .{
+   try zts.print(tmpl, "customer_details", .{
         .name = cust.name,
         .address = cust.address,
         .credit = cust.credit,
    });
 
-   try zts.printSection(tmpl, "invoice_table", .{}, out);
+   try zts.print(tmpl, "invoice_table", .{}, out);
     for (cust.invoices) |invoice|  {
-      try zts.printSection(tmpl, "invoice_row", .{
+      try zts.print(tmpl, "invoice_row", .{
           .date = invoice.date,
           .details = invoice.details,
           .amount = invoice.amount,
@@ -248,7 +252,7 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
       total += invoice.amount;
     }
 
-    try zts.printSection(tmpl, "invoice_total", .{.total = total}, out);
+    try zts.print(tmpl, "invoice_total", .{.total = total}, out);
 }
 ```
 
@@ -263,14 +267,14 @@ Note that we cant do this :
    try zts.writeHeader(tmpl, out);
    
    // explicit parameters defined here
-   // try zts.printSection(tmpl, "customer_details", .{
+   // try zts.print(tmpl, "customer_details", .{
         // .name = cust.name,
         // .address = cust.address,
         // .credit = cust.credit,
    // });
 
    // this alternative will be a compile error instead
-   try zts.printSection(tmpl, "customer_details", cust);
+   try zts.print(tmpl, "customer_details", cust);
 ```
 
 Because the struct `CustomerDetails` is not an exact match for the parameters that the "customer_details" section of the template expects,
@@ -401,7 +405,7 @@ try terms_section = std.fmt.allocPrint(allocator, "terms_{s}", std.os.getenv("LA
 defer allocator.free(section);
 
 try zts.printHeader(tmpl, "Dear Customer", out);
-try zts.writeSection(tmpl, terms_section, out);
+try zts.write(tmpl, terms_section, out);
 }
 ```
 
@@ -411,7 +415,7 @@ Or we can even mix up the order of sections in the output depending on some vari
 
 ```zig
 if (is_northern_hemisphere) try zts.printHeader(tmpl, "Dear Customer", out);
-try zts.writeSection(tmpl, terms_section, out);
+try zts.write(tmpl, terms_section, out);
 if (is_southern_hemisphere) try zts.printHeader(tmpl, "Mate", out);
 ```
 
@@ -443,7 +447,7 @@ Example:
 </div>
 ```
 
-Or you can use the `printHeader(template, args, out)` helper function to print out this header segment.
+You can use the `printHeader(template, args, out)` to access and print out this header segment.
 ```zig
 const tmpl = @embedFile("foobar.txt");
 try zts.printHeader(tmpl, .{}, out);
@@ -505,3 +509,50 @@ So that gives us the following sections:
 
 The line in notes beginning with `.that` is not seen as a section, rather its part of the notes content
 
+# Future Addition
+
+As of version 0.12.x of the compiler, Zig comptime can handle getting substrings out of comptime string inputs,
+but it cant handle returning these slices as comptime values.
+
+Its a bit more complicated than it looks - bascially, comptime strings do not have a usable address until very late 
+in the compilation pipeline. This should be addressed in future releases of Zig.
+
+When we get there, ZTS will get these shiny new functions :
+
+```
+--- foobar.txt ---
+.foo
+I like daytime {s}
+.bar
+I prefer nighttime {s}
+
+```
+
+```zig
+
+const MyTemplate = zts.Template("templates/foobar.txt");
+
+// MyTemplate is a comptime generated Type declaration that is equivalent to this :
+
+const MyTemplate = struct {
+  foo: []const u8 = "I like daytime {s}",
+  bar: []const u8 = 'I prefer nighttime {s}",
+};
+```
+
+Which you can use in your code like this :
+```
+// note the {} to create an instance of the dynamic type
+
+const foobar = zts.Template("templates/foobar.txt"){};
+
+zts.print(foobar.foo, ",yes I do !");
+zts.print(foobar.bar, "because its quieter");
+```
+
+to produce the output :
+
+```
+I like daytime, yes I do !
+I prefer nighttime because its quieter
+```
