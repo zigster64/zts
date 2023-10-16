@@ -83,6 +83,7 @@ I prefer {s}
 ```zig
 
 const data = @embedFile("foobar.txt");
+
 try out.print(zts.s(data, "foo"), .{"daytime"});
 try out.print(zts.s(data, "bar"), .{"nighttime"});
 
@@ -107,6 +108,7 @@ I prefer {s}
 ```zig
 
 const data = @embedFile("foobar.txt");
+
 try zts.printSection(data, "foo", .{"daytime"}, out);
 try zts.printSection(data, "bar", .{"nighttime"}, out);
 
@@ -232,16 +234,16 @@ And the Zig code to print data through that template looks like this :
 ```zig
 fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 
-  var data = @embedFile("html/financial_statement.html");
+  var tmpl = @embedFile("html/financial_statement.html");
    
-   try zts.printHeader(data, .{}, out);
-   try zts.printSection(data, "customer_details", .{
+   try zts.writeHeader(tmpl, out);
+   try zts.printSection(tmpl, "customer_details", .{
         .name = cust.name,
         .address = cust.address,
         .credit = cust.credit,
    });
 
-   try zts.printSection(data, "invoice_table", .{}, out);
+   try zts.printSection(tmpl, "invoice_table", .{}, out);
     for (cust.invoices) |invoice|  {
       try zts.printSection(data, "invoice_row", .{
           .date = invoice.date,
@@ -252,9 +254,43 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
       total += invoice.amount;
     }
 
-    try zts.printSection(data, "invoice_total", .{.total = total}, out);
+    try zts.printSection(tmpl, "invoice_total", .{.total = total}, out);
 }
 ```
+
+So thats all pretty explicit.
+
+Note that we cant do this :
+
+```zig
+
+  var tmpl = @embedFile("html/financial_statement.html");
+   
+   try zts.writeHeader(tmpl, out);
+   
+   // explicit parameters defined here
+   // try zts.printSection(tmpl, "customer_details", .{
+        // .name = cust.name,
+        // .address = cust.address,
+        // .credit = cust.credit,
+   // });
+
+   // this alternative will be a compile error instead
+   try zts.printSection(tml, "customer_details", cust);
+```
+
+Because the struct `CustomerDetails` is not an exact match for the parameters that the "customer_details" section of the template expects,
+this will be a compile error.
+
+Yes, its more verbose, but its explicit in the Zen of Zig, and easier to maintain.
+
+By looking at this code only, you can see what parameters the template
+expects (without reading the template), and you can see what fields of the
+CustomerDetails struct are applied to which template field.
+
+You cant accidentally miss anything, and any future changes to CustomerDetails struct will not 
+create any new regressions against the template.
+
 
 ## ZTS Templates rely on your Zig code to drive the logic
 
@@ -289,6 +325,9 @@ https://github.com/batiati/mustache-zig
 with examples of mustache-zig used in the Zap (web server) project here :
 
 https://github.com/zigzap/zap/blob/master/examples/mustache/mustache.zig
+
+There is also Etch :
+https://github.com/haze/etch
 
 There are some examples of ZTS used with the http.zig library here :
 
