@@ -15,6 +15,8 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
     comptime var content_end = 0;
     comptime var last_start_of_line = 0;
 
+    @setEvalBranchQuota(1_000_000);
+
     inline for (str, 0..) |c, index| {
         switch (mode) {
             .find_directive => {
