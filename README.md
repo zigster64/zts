@@ -10,7 +10,7 @@ Simple:
 - Uses Zig like field tags in your template
 - Uses Zig `fmt.print` for formatting data 
 - No funky new templating syntax, no DSL, no new formatting conventions to learn
-- Outputs to Zig `writer` interface. Plugs right in to web server apps !
+- Outputs to Zig `writer` interface. Use it in web server apps !
 
 Maintainable:
 - Control of the template logic is done in your Zig code, not delegated to the template engine
@@ -39,16 +39,16 @@ I like the nighttime
 
 Note the sections `.foo` and `.bar`.  ZTS uses a "Zig like" field syntax for defining the section breaks in the text. 
 
-Then in your zig code, just embed that file, and then use the `zts.s(data, section_name)` function to return the appropriate section out of the data.
+Then in your zig code, just embed that file, and then use the `zts.s(template, section_name)` function to return the appropriate section out of the data.
 
 ```zig
 const zts = @import("zts");
 
 const out = std.io.getStdOut().writer();
 
-const data = @embedFile("foobar.txt");
-try out.print("foo says - {s}\n", zts.s(my_foobar, "foo"));
-try out.print("bar says - {s}\n", zts.s(my_foobar, "bar"));
+const tmpl = @embedFile("foobar.txt");
+try out.print("foo says - {s}\n", zts.s(tmpl, "foo"));
+try out.print("bar says - {s}\n", zts.s(tmpl, "bar"));
 
 ```
 
@@ -64,7 +64,7 @@ Thats really all there is to it. Its basically splitting the input into sections
 
 ## The contents of data Sections are comptime known
 
-The data returned from `s(data, section_name)` is comptime known ... which means that it can in turn be passed to Zig standard print functions 
+The data returned from `s(template, section_name)` is comptime known ... which means that it can in turn be passed to Zig standard print functions 
 as a formatting string.
 
 ```
@@ -76,18 +76,18 @@ I prefer {s}
 
 ```zig
 
-const data = @embedFile("foobar.txt");
+const tmpl = @embedFile("foobar.txt");
 
-try out.print(zts.s(data, "foo"), .{"daytime"});
-try out.print(zts.s(data, "bar"), .{"nighttime"});
+try out.print(zts.s(tmpl, "foo"), .{"daytime"});
+try out.print(zts.s(tmpl, "bar"), .{"nighttime"});
 
 ```
 
 ## ZTS print helper functions
 
-Use of the `s(data, section_name)` function is provided as a low-level utility.
+Use of the `s(tmpl, section_name)` function is provided as a low-level utility.
 
-Putting `zts.s(data, section_name)` everywhere is a bit verbose, and gets a bit messy very quickly. 
+Putting `zts.s(tmpl, section_name)` everywhere is a bit verbose, and gets a bit messy very quickly. 
 
 ZTS provides helper functions that make it easier to print.
 
@@ -101,10 +101,10 @@ I prefer {s}
 
 ```zig
 
-const data = @embedFile("foobar.txt");
+const tmpl = @embedFile("foobar.txt");
 
-try zts.printSection(data, "foo", .{"daytime"}, out);
-try zts.printSection(data, "bar", .{"nighttime"}, out);
+try zts.printSection(tmpl, "foo", .{"daytime"}, out);
+try zts.printSection(tmpl, "bar", .{"nighttime"}, out);
 
 ```
 
@@ -115,7 +115,7 @@ well as the standard compile errors about parameters not matching the expected f
 for example, if you add this to the code above :
 
 ```zig
-try zts.printSection(data, "other", .{}, out);
+try zts.printSection(template, "other", .{}, out);
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
@@ -139,11 +139,11 @@ If your template segments DO NOT have print formatting, do not need argument pro
 then you can use the `write` variant helper functions that ZTS provides.
 
 ```zig
-try zts.writeHeader(data, out);
-try zts.writeSection(data, section, out);
+try zts.writeHeader(template, out);
+try zts.writeSection(template, section, out);
 ```
 
-When using `writeSection(data, section, out)` ... if the section is null, or cannot be found in the data, then writeSection will
+When using `writeSection(template, section, out)` ... if the section is null, or cannot be found in the data, then writeSection will
 print nothing. 
 
 There is also a `lookup()` function that takes runtime / dynamic labels, and returns a non-comptime string of the section ... or `null` if not found.
@@ -156,7 +156,7 @@ example:
 ```zig
 
 // you can do some fancy dynamic processing here
-const dynamic_template_section = zts.lookup(data, os.getenv("PLANET").?);
+const dynamic_template_section = zts.lookup(tmpl, os.getenv("PLANET").?);
 if (dynamic_template_section == null) {
    std.debug.print("Sorry, cannot find a section for the planet you are on");
    return;
@@ -165,13 +165,13 @@ try out.writeAll(dynamic_template_section);
 
 // or you can do this using the write helper functions
 // note that if there is no PLANET env, then nothing is printed
-try zts.writeSection(data, os.getenv("PLANET"), out);  
+try zts.writeSection(tmpl, os.getenv("PLANET"), out);  
 
 // but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
 try out.print(dynamic_template_section, .{customer_details});  // <<-- compile error ! dynamic_template_section is not comptime known
 
 // and you cant do this either, because s() demands comptime params too
-const printable_dynamic_section = zts.s(data, os.getenv("PLANET").?);  // <<-- compile error !  unable to resovle comptime value
+const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- compile error !  unable to resovle comptime value
 ```
 
 Comptime restrictions can be a pain.
@@ -239,7 +239,7 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
 
    try zts.printSection(tmpl, "invoice_table", .{}, out);
     for (cust.invoices) |invoice|  {
-      try zts.printSection(data, "invoice_row", .{
+      try zts.printSection(tmpl, "invoice_row", .{
           .date = invoice.date,
           .details = invoice.details,
           .amount = invoice.amount,
@@ -270,7 +270,7 @@ Note that we cant do this :
    // });
 
    // this alternative will be a compile error instead
-   try zts.printSection(tml, "customer_details", cust);
+   try zts.printSection(tmpl, "customer_details", cust);
 ```
 
 Because the struct `CustomerDetails` is not an exact match for the parameters that the "customer_details" section of the template expects,
@@ -398,8 +398,8 @@ Code to process this :
 try terms_section = std.fmt.allocPrint(allocator, "terms_{s}", std.os.getenv("LANG").?[0..2]);
 defer allocator.free(section);
 
-try zts.printHeader(data, "Dear Customer", out);
-try zts.writeSection(data, terms_section, out);
+try zts.printHeader(tmpl, "Dear Customer", out);
+try zts.writeSection(tmpl, terms_section, out);
 }
 ```
 
@@ -408,9 +408,9 @@ try zts.writeSection(data, terms_section, out);
 Or we can even mix up the order of sections in the output depending on some variable :
 
 ```zig
-if (is_northern_hemisphere) try zts.printHeader(data, "Dear Customer", out);
-try zts.writeSection(data, terms_section, out);
-if (is_southern_hemisphere) try zts.printHeader(data, "Mate", out);
+if (is_northern_hemisphere) try zts.printHeader(tmpl, "Dear Customer", out);
+try zts.writeSection(tmpl, terms_section, out);
+if (is_southern_hemisphere) try zts.printHeader(tmpl, "Mate", out);
 ```
 
 So for our US and EU customers, they get the Notice header followed by the terms and conditions.
@@ -441,23 +441,23 @@ Example:
 </div>
 ```
 
-Or you can use the `printHeader(data, args, out)` helper function to print out this header segment.
+Or you can use the `printHeader(template, args, out)` helper function to print out this header segment.
 ```zig
-const data = @embedFile("foobar.txt");
-try zts.printHeader(data, .{}, out);
+const tmpl = @embedFile("foobar.txt");
+try zts.printHeader(tmpl, .{}, out);
 
 // or the write variant with no extra parameters 
-try zts.writeHeader(data, out);
+try zts.writeHeader(tmpl, out);
 ```
 
 You can access this header section using the `s()` function, and passing `null` as the section name.
 
 ```zig
-const data = @embedFile("foobar.txt");
-const header_content = zts.s(data, null);
+const tmpl = @embedFile("foobar.txt");
+const header_content = zts.s(tmpl, null);
 
 // or use lookup for the runtime variant
-const header_content = zts.lookp(data, null); 
+const header_content = zts.lookp(tmpl, null); 
 ```
 
 # Section Declaration Syntax
