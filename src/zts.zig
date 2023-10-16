@@ -53,7 +53,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                         }
                         mode = .content_line;
                     },
-                    ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_line;
                         maybe_directive_start = directive_start;
@@ -132,7 +132,7 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                         }
                         mode = .content_line;
                     },
-                    ' ', '\t', '.', '-', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_line;
                         maybe_directive_start = directive_start;
@@ -254,7 +254,11 @@ test "html file with multiple sections and formatting" {
 }
 
 test "statement in english or german based on LANG env var - runtime only" {
-    var out = std.io.getStdErr().writer();
+    var list = std.ArrayList(u8).init(std.testing.allocator);
+    defer list.deinit();
+
+    // var out = std.io.getStdErr().writer();
+    var out = list.writer();
     const data = @embedFile("testdata/you-owe-us.txt");
 
     // use environment
@@ -266,4 +270,7 @@ test "statement in english or german based on LANG env var - runtime only" {
     // try it again in german
     lang = "de";
     try writeSection(data, "terms_" ++ lang, out);
+
+    const expected_data = @embedFile("testdata/english_german_statement.txt");
+    try std.testing.expectEqualSlices(u8, expected_data, list.items);
 }
