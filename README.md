@@ -8,11 +8,12 @@ ZTS is a minimalist Zig module that helps you use text templates in a way that i
 
 Simple:
 - Uses Zig like field tags in your template
-- Uses Zig `fmt.print` 
+- Uses Zig `fmt.print` for formatting data 
 - No funky new templating syntax, no DSL, no new formatting conventions to learn
+- Outputs to Zig `writer` interface. Plugs right in to web server apps !
 
 Maintainable:
-- Control of the template logic is done in your Zig code, not the template engine
+- Control of the template logic is done in your Zig code, not delegated to the template engine
 - Data passed through the template must be explicitly defined
 - There is no magic expansion of data structs that works fine today, and breaks tomorrow as your data model evolves
 - Mismatches between your code, your data, and the template are caught at compile time, not runtime
