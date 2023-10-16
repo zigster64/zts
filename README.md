@@ -14,34 +14,23 @@ As a HTML templating util, this covers a lot of bases, and provides a pretty san
 
 Lets have a look ...
 
-## Differences vs other Zig Templating tools
+## In a nutshell
 
-There are a number of excellent template engine tools for Zig, which use the traditional approach of passing a template + some declarations
-to a template library, which then controls the output of the data through the template.
+ZTS uses either static strings, (or text files that you load at compile time via @embedFile)
 
-https://github.com/batiati/mustache-zig  (an implementation of Mustache for Zig)
+ZTS gives you utilities for splitting those files into sections at comptime, based upon directives in the file. This means that there is no
+overhead at runtime for parsing the templates.
 
-https://github.com/MasterQ32/ZTT (a text template tool that uses code generation)
+The contents of the sections are therefore comptime-known, so you can pass them as format strings to `std.fmt.print()` and the likes.
 
-ZTS uses an inversion of this common templating approach, by passing sections of your data through sections of the template, whilst
-keeping the control of this flow strictly inside your Zig code at all times.
+Zig's `std.fmt.print()` function is actually pretty powerful already - you can pass anon structs with named fields to the print function,
+and the standard formatting directives understand how to dereference fields out of the struct.  This is also done at comptime, so no extra
+runtime overhead, and mismatches are caught by the compiler.
 
-ZTS also uses Zig's standard `print` formatting to transform data through the template, so there is no additional DSL or formatting rules to learn.
+ZTS simply leverages this power in the standard lib for formatting output.
 
-The other MAJOR difference is that ZTS is strictly comptime only templating. This brings a lot of benefits, such as :
-- Simplicity. There is just _less_ going on
-- Zero runtime parsing overhead
-- Runtime speed
-- Thorough compile time checking of both template and parameters
-- Mismatches between templates and logic are very unlikely to get past compilation, and raise their ugly heads at runtime
 
-And some negatives too, such as:
-- Build times do slow down due to comptime processing
-- Complete inability to have dynamically generated templates
-- Complete inability to modify the template at runtime
-- You can do some dynamic processing, and abuse the templates to some extent, but the pain level increases very quickly because of Zig comptime restrictions
-
-Choices are good. Its up to you to work out which approach best suits your project.
+TODO - add some benchmarks here, comparing performance to other templating approaches
 
 ## ZTS - Very Basic Example
 
@@ -53,6 +42,8 @@ I prefer daytime
 .bar
 I like the nighttime
 ```
+
+Note the sections `.foo` and `.bar`.  ZTS uses a "Zig like" field syntax for defining the section breaks in the text. 
 
 Then in your zig code, just embed that file, and then use the `zts.s(data, section_name)` function to return the appropriate section out of the data.
 
@@ -156,10 +147,13 @@ try zts.writeHeader(data, out);
 try zts.writeSection(data, section, out);
 ```
 
+When using `writeSection(data, section, out)` ... if the section is null, or cannot be found in the data, then writeSection will
+print nothing. 
+
 There is also a `lookup()` function that takes runtime / dynamic labels, and returns a non-comptime string of the section ... or `null` if not found.
 Its a runtime version of the `s()` function, that can be used with dynamic labels.
 
-You can ONLY use the return data from `lookup()` in a non-comptime context though.
+You can ONLY use the return data from `lookup()` in a non-comptime context though, such as using the data in a `writeAll()` statement.
 
 
 example:
@@ -174,6 +168,7 @@ if (dynamic_template_section == null) {
 try out.writeAll(dynamic_template_section);
 
 // or you can do this using the write helper functions
+// note that if there is no PLANET env, then nothing is printed
 try zts.writeSection(data, os.getenv("PLANET"), out);  
 
 // but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
@@ -299,19 +294,23 @@ There are some examples of ZTS used with the http.zig library here :
 
 https://github.com/zigster64/zig-zag-zoe
 
-
 ## Selectively print sections from the template
 
 In the traditional Template-Driven approach, this is normally done by adding syntax to the template such as
 ```
-Hey There
+Hey There {{customer_title}}
   You owe us some money !
 
   Here is the proof ...
 
-{{if language .eq "deutsch"}}
+{{if language .eq "de"}}
   Geschäftsbedingungen
   Zahlung 7 Tagen netto
+{{elseif language .eq "es"}}
+  Términos y condiciones
+  Pago neto 7 días
+{{elseif }}
+  .... etc etc
 {{else}}
   Terms and conditons
   Payment Nett 7 days
@@ -325,7 +324,7 @@ You dont even need to print them all !
 
 Example:
 ```
-Hey There
+Hey There {s}
   You owe us some money !
 
   Here is the proof ...
@@ -353,6 +352,10 @@ Hey There
   次の7日でお支払い
 ```
 
+Looks a bit cleaner, easier to read, and more Ziggy than the previous example.
+
+Code to process this :
+
 ```zig
 
 // dynamically create the label at runtime, based on the LANG env var
@@ -362,7 +365,7 @@ Hey There
 try terms_section = std.fmt.allocPrint(allocator, "terms_{s}", std.os.getenv("LANG").?[0..2]);
 defer allocator.free(section);
 
-try zts.writeHeader(data, out);
+try zts.printHeader(data, "Dear Customer", out);
 try zts.writeSection(data, terms_section, out);
 }
 ```
@@ -372,34 +375,20 @@ try zts.writeSection(data, terms_section, out);
 Or we can even mix up the order of sections in the output depending on some variable :
 
 ```zig
-if (is_northern_hemisphere) try zts.writeHeader(data, out);
+if (is_northern_hemisphere) try zts.printHeader(data, "Dear Customer", out);
 try zts.writeSection(data, terms_section, out);
-if (is_southern_hemisphere) try zts.writeHeader(data, out);
+if (is_southern_hemisphere) try zts.printHeader(data, "Mate", out);
 ```
 
 So for our US and EU customers, they get the Notice header followed by the terms and conditions.
 
 For our AU, NZ, and Sth American customers, because they are upside down, they get the terms and conditions first followed by the Notice header.
 
-... not sure how you could even do that in a normal templating flow ?
+Doing the same thing using a traditional template flow would be possible, but likely to be quite ugly, or involve duplicating sections of 
+the template in the original data, wrapped in if statements. 
 
 So again, its not for everyone, but there are definitely some cases where its just simpler and more powerful to keep the control inside your
 Zig code rather than a templating engine.
-
-
-# Section Declaration Syntax
-
-In the template examples above, sections in the template are simply denoted by a line that has a `.directive` and nothing else.
-
-Syntactically, the `.directive` in the template must obey these rules :
-
-- Can start with any amount of leading whitespace
-- Begins with a `.` character
-- Contains just the directive word with no whitespace, and no templated content
-- Directive name cannot contain special characters [] {} - : \t
-- Is a complete line, terminated by a `\n` 
-
-Any lines that do not obey all of the above rules are considered as content, and not a directive.
 
 
 ## Content that occurs before the first directive
@@ -437,4 +426,47 @@ const header_content = zts.s(data, null);
 // or use lookup for the runtime variant
 const header_content = zts.lookp(data, null); 
 ```
+
+# Section Declaration Syntax
+
+In the template examples above, sections in the template are simply denoted by a line that has a `.directive` and nothing else.
+
+The syntax for a `.directive` looks a lot like a Zig field declaration
+
+Syntactically, the `.directive` in the template must obey these rules :
+
+- Can start with any amount of leading whitespace
+- Begins with a `.` character
+- Contains just the directive word with no whitespace, and no templated content
+- Directive name cannot contain special characters [] {} - : \t
+- Is a complete line, terminated by a `\n` 
+
+Any lines that do not obey all of the above rules are considered as content, and not a directive.
+
+Example:
+```
+Things I need to buy this week;
+    - milk
+    - eggs
+    - potatoes
+.car_stuff
+   - indicator fluid
+   - parking meter detector
+.computer_stuff
+    - more ram
+    - more disk
+    - more compilers
+.notes
+   some general notes about things 
+   .that need to be purchased
+   by the end of the week
+```
+
+So that gives us the following sections:
+- header (everything from the start up to car_stuff)
+- car_stuff
+- computer_stuff
+- notes
+
+The line in notes beginning with `.that` is not seen as a section, rather its part of the notes content
 
