@@ -4,33 +4,26 @@
 
 ![zts](https://github.com/zigster64/zts/blob/main/docs/zts.jpg?raw=true)
 
-A utility lib that uses Zig's comptime power to make a dead simple and pretty efficient text templating engine.
+ZTS is a minimalist Zig module that helps you use text templates in a way that is simple, maintainable, and efficient.
 
-Its all done at comptime, so there is no runtime overhead for parsing or allocation, no code generation.
+Simple:
+- Uses Zig like field tags in your template
+- Uses Zig `fmt.print` 
+- No funky new templating syntax, no DSL, no new formatting conventions to learn
 
-There is no funky new templating syntax to apply either, its just Zig, and nothing but Zig.
+Maintainable:
+- Control of the template logic is done in your Zig code, not the template engine
+- Data passed through the template must be explicitly defined
+- There is no magic expansion of data structs that works fine today, and breaks tomorrow as your data model evolves
+- Mismatches between your code, your data, and the template are caught at compile time, not runtime
 
-As a HTML templating util, this covers a lot of bases, and provides a pretty sane DX, with compile time template validation, and the ability to apply fine grained format control to structured fields.
+Efficient:
+- All template parsing is performed at comptime, no runtime overhead
+- Minimal codebase
+- There is just _less_ going on compared to full-featured templating engines
 
 Lets have a look ...
 
-## In a nutshell
-
-ZTS uses either static strings, (or text files that you load at compile time via @embedFile)
-
-ZTS gives you utilities for splitting those files into sections at comptime, based upon directives in the file. This means that there is no
-overhead at runtime for parsing the templates.
-
-The contents of the sections are therefore comptime-known, so you can pass them as format strings to `std.fmt.print()` and the likes.
-
-Zig's `std.fmt.print()` function is actually pretty powerful already - you can pass anon structs with named fields to the print function,
-and the standard formatting directives understand how to dereference fields out of the struct.  This is also done at comptime, so no extra
-runtime overhead, and mismatches are caught by the compiler.
-
-ZTS simply leverages this power in the standard lib for formatting output.
-
-
-TODO - add some benchmarks here, comparing performance to other templating approaches
 
 ## ZTS - Very Basic Example
 
