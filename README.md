@@ -192,8 +192,8 @@ The HTML template looks like this :
 
     .customer_details
     <h1>Customer</h1>
-    <p>Name: {[name]:s}</p>
-    <p>Address: {[address]:s}</p>
+    <p>Name:           {[name]:s}</p>
+    <p>Address:        {[address]:s}</p>
     <p>Credit Limit: $ {[credit]:.2}</p>
 
     .invoice_table
@@ -207,8 +207,8 @@ The HTML template looks like this :
 
         .invoice_row
         <tr>
-            <td>{[date]:s}</td>
-            <td>{[details]:s}</td>
+            <td>  {[date]:s}</td>
+            <td>  {[details]:s}</td>
             <td>$ {[amount]:.2}</td>
         </tr>
 
