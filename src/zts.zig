@@ -169,7 +169,7 @@ pub fn printHeader(comptime str: []const u8, args: anytype, out: anytype) !void 
     try out.print(comptime s(str, null), args);
 }
 
-pub fn printSection(comptime str: []const u8, comptime section: []const u8, args: anytype, out: anytype) !void {
+pub fn print(comptime str: []const u8, comptime section: []const u8, args: anytype, out: anytype) !void {
     try out.print(comptime s(str, section), args);
 }
 
@@ -178,7 +178,7 @@ pub fn writeHeader(str: []const u8, out: anytype) !void {
     if (data != null) try out.writeAll(data.?);
 }
 
-pub fn writeSection(str: []const u8, section: []const u8, out: anytype) !void {
+pub fn write(str: []const u8, section: []const u8, out: anytype) !void {
     const data = lookup(str, section);
     if (data != null) try out.writeAll(data.?);
 }
@@ -235,16 +235,16 @@ test "html file with multiple sections and formatting" {
     try printHeader(data, .{}, out);
 
     // print the customer details
-    try printSection(data, "customer_details", customer, out);
+    try print(data, "customer_details", customer, out);
 
     // print a table of customer invoices
-    try printSection(data, "invoice_table", .{}, out);
+    try print(data, "invoice_table", .{}, out);
     var total: f32 = 0.0;
     inline for (invoices) |inv| {
-        try printSection(data, "invoice_row", inv, out);
+        try print(data, "invoice_row", inv, out);
         total += inv.amount;
     }
-    try printSection(data, "invoice_total", .{ .total = total }, out);
+    try print(data, "invoice_total", .{ .total = total }, out);
 
     // uncomment these to see the output on the console
     // var stderr = std.io.getStdErr().writer();
@@ -267,11 +267,11 @@ test "statement in english or german based on LANG env var - runtime only" {
     var lang = std.os.getenv("LANG").?[0..2];
 
     try writeHeader(data, out);
-    try writeSection(data, "terms_" ++ lang, out);
+    try write(data, "terms_" ++ lang, out);
 
     // try it again in german
     lang = "de";
-    try writeSection(data, "terms_" ++ lang, out);
+    try write(data, "terms_" ++ lang, out);
 
     const expected_data = @embedFile("testdata/english_german_statement.txt");
     try std.testing.expectEqualSlices(u8, expected_data, list.items);

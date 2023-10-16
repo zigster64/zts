@@ -32,16 +32,16 @@ pub fn main() !void {
         try zts.printHeader(tmpl, .{}, out);
 
         // print the customer details
-        try zts.printSection(tmpl, "customer_details", customer, out);
+        try zts.print(tmpl, "customer_details", customer, out);
 
         // print a table of customer invoices
-        try zts.printSection(tmpl, "invoice_table", .{}, out);
+        try zts.print(tmpl, "invoice_table", .{}, out);
         var total: f32 = 0.0;
         inline for (invoices) |inv| {
-            try zts.printSection(tmpl, "invoice_row", inv, out);
+            try zts.print(tmpl, "invoice_row", inv, out);
             total += inv.amount;
         }
-        try zts.printSection(tmpl, "invoice_total", .{ .total = total }, out);
+        try zts.print(tmpl, "invoice_total", .{ .total = total }, out);
     }
     const t2 = std.time.microTimestamp();
     const te = t2 - t1;
