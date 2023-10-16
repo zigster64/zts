@@ -115,7 +115,7 @@ well as the standard compile errors about parameters not matching the expected f
 for example, if you add this to the code above :
 
 ```zig
-try zts.printSection(template, "other", .{}, out);
+try zts.printSection(tmpl, "other", .{}, out);
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
