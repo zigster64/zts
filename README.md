@@ -325,7 +325,9 @@ https://github.com/haze/etch
 
 There are some examples of ZTS used with the http.zig library here :
 
-https://github.com/zigster64/zig-zag-zoe/blob/a76d7a4eb27061fa8df5a04ae8b59ee572a1f623/src/game.zig#L416
+https://github.com/zigster64/zig-zag-zoe/blob/master/src/game.zig#L416
+
+... in this case, its rendering a Game board for a multi-player web game
 
 ## Selectively print sections from the template
 
