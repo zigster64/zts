@@ -3,7 +3,7 @@ const zts = @import("zts.zig");
 
 pub fn main() !void {
     std.debug.print("Do 100k runs of passing data through HTML template\n", .{});
-    var out = std.io.getStdOut().writer(); // pipe this to /dev/null and time it
+    const out = std.io.getStdOut().writer(); // pipe this to /dev/null and time it
 
     const tmpl = @embedFile("testdata/customer_details.html");
 
@@ -13,12 +13,12 @@ pub fn main() !void {
         amount: f32,
     };
 
-    var customer = .{
+    const customer = .{
         .name = "Joe Blow",
         .address = "21 Main Street",
         .credit = 100.0,
     };
-    var invoices = &[_]Invoice{
+    const invoices = &[_]Invoice{
         .{ .date = "2023-10-01", .details = "New Hoodie", .amount = 80.99 },
         .{ .date = "2023-10-03", .details = "Hotdog with Sauce", .amount = 4.50 },
         .{ .date = "2023-10-04", .details = "Mystery Gift", .amount = 12.00 },
