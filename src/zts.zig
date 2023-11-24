@@ -83,7 +83,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
         return str;
     }
 
-    comptime var directiveNotFound = "Data does not contain any section labelled '" ++ directive.? ++ "'\nMake sure there is a line in your data that start with ." ++ directive.?;
+    const directiveNotFound = "Data does not contain any section labelled '" ++ directive.? ++ "'\nMake sure there is a line in your data that start with ." ++ directive.?;
     @compileError(directiveNotFound);
 }
 
@@ -188,7 +188,7 @@ test "data with no sections, and formatting" {
     try std.testing.expectEqual(data.len, 78);
 
     // test that we can use the data as a comptime known format to pass through print
-    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, data, .{"embedded formatting"});
+    const formatted_data = try std.fmt.allocPrint(std.testing.allocator, data, .{"embedded formatting"});
     try std.testing.expectEqual(formatted_data.len, 94);
     std.testing.allocator.free(formatted_data);
 
@@ -210,7 +210,7 @@ test "html file with multiple sections and formatting" {
     defer list.deinit();
 
     // var out = std.io.getStdErr().writer();
-    var out = list.writer();
+    const out = list.writer();
     const data = @embedFile("testdata/customer_details.html");
 
     const Invoice = struct {
@@ -219,12 +219,12 @@ test "html file with multiple sections and formatting" {
         amount: f32,
     };
 
-    var customer = .{
+    const customer = .{
         .name = "Joe Blow",
         .address = "21 Main Street",
         .credit = 100.0,
     };
-    var invoices = &[_]Invoice{
+    const invoices = &[_]Invoice{
         .{ .date = "2023-10-01", .details = "New Hoodie", .amount = 80.99 },
         .{ .date = "2023-10-03", .details = "Hotdog with Sauce", .amount = 4.50 },
         .{ .date = "2023-10-04", .details = "Mystery Gift", .amount = 12.00 },
@@ -260,7 +260,7 @@ test "statement in english or german based on LANG env var - runtime only" {
     defer list.deinit();
 
     // var out = std.io.getStdErr().writer();
-    var out = list.writer();
+    const out = list.writer();
     const data = @embedFile("testdata/you-owe-us.txt");
 
     // use environment
