@@ -2,7 +2,7 @@
 
 ## Other Zig template management tools to check out
 
-- https://github.com/jetzig-framework/jetzig
+- https://github.com/jetzig-framework/zmpl
 - https://github.com/batiati/mustache-zig
 - https://github.com/haze/etch
 
