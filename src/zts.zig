@@ -264,7 +264,7 @@ test "statement in english or german based on LANG env var - runtime only" {
     const data = @embedFile("testdata/you-owe-us.txt");
 
     // use environment
-    var lang = std.os.getenv("LANG").?[0..2];
+    var lang = std.posix.getenv("LANG").?[0..2];
 
     try writeHeader(data, out);
     try write(data, "terms_" ++ lang, out);
