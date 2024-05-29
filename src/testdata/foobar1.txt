@@ -2,3 +2,6 @@
 I like the daytime
 .bar
 I prefer the nighttime
+.empty
+.notempty
+This has some content
