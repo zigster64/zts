@@ -4,6 +4,7 @@ const Mode = enum {
     find_directive,
     reading_directive_name,
     content_line,
+    content_start,
 };
 
 // s will return the section from the data, as a comptime known string
@@ -30,7 +31,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                     '\n' => {
                         last_start_of_line = index + 1;
                     },
-                    else => mode = .content_line,
+                    else => mode = .content_start,
                 }
             },
             .reading_directive_name => {
@@ -53,14 +54,35 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
-                        mode = .content_line;
+                        mode = .content_start;
                     },
                     ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
-                        mode = .content_line;
+                        mode = .content_start;
                         maybe_directive_start = directive_start;
                     },
                     else => {},
+                }
+            },
+            .content_start => {
+                // if the first non-whitespace char of content is a .
+                // then we are in find directive mode !
+                switch (c) {
+                    '\n' => {
+                        mode = .find_directive;
+                        last_start_of_line = index + 1;
+                    },
+                    ' ', '\t' => {}, // eat whitespace
+                    '.' => {
+                        // thinks we are looking for content, but last directive
+                        // was empty, so start a new directive on this line
+                        maybe_directive_start = index;
+                        last_start_of_line = content_start;
+                        mode = .reading_directive_name;
+                    },
+                    else => {
+                        mode = .content_line;
+                    },
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
@@ -109,7 +131,7 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                     '\n' => {
                         last_start_of_line = index + 1;
                     },
-                    else => mode = .content_line,
+                    else => mode = .content_start,
                 }
             },
             .reading_directive_name => {
@@ -132,14 +154,35 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
-                        mode = .content_line;
+                        mode = .content_start;
                     },
                     ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
-                        mode = .content_line;
+                        mode = .content_start;
                         maybe_directive_start = directive_start;
                     },
                     else => {},
+                }
+            },
+            .content_start => {
+                // if the first non-whitespace char of content is a .
+                // then we are in find directive mode !
+                switch (c) {
+                    '\n' => {
+                        mode = .find_directive;
+                        last_start_of_line = index + 1;
+                    },
+                    ' ', '\t' => {}, // eat whitespace
+                    '.' => {
+                        // thinks we are looking for content, but last directive
+                        // was empty, so start a new directive on this line
+                        maybe_directive_start = index;
+                        last_start_of_line = content_start;
+                        mode = .reading_directive_name;
+                    },
+                    else => {
+                        mode = .content_line;
+                    },
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
@@ -198,11 +241,15 @@ test "data with no sections, and formatting" {
 
 test "foobar with multiple sections and no formatting" {
     const data = @embedFile("testdata/foobar1.txt");
-    try std.testing.expectEqual(data.len, 52);
+    try std.testing.expectEqual(data.len, 91);
     const foo = s(data, "foo");
-    try std.testing.expectEqualSlices(u8, foo, "I like the daytime\n");
+    try std.testing.expectEqualSlices(u8, "I like the daytime\n", foo);
     const bar = s(data, "bar");
-    try std.testing.expectEqualSlices(u8, bar, "I prefer the nighttime\n");
+    try std.testing.expectEqualSlices(u8, "I prefer the nighttime\n", bar);
+    const empty = s(data, "empty");
+    try std.testing.expectEqualSlices(u8, "", empty);
+    const notempty = s(data, "notempty");
+    try std.testing.expectEqualSlices(u8, "This has some content\n", notempty);
 }
 
 test "html file with multiple sections and formatting" {
@@ -276,3 +323,5 @@ test "statement in english or german based on LANG env var - runtime only" {
     const expected_data = @embedFile("testdata/english_german_statement.txt");
     try std.testing.expectEqualSlices(u8, expected_data, list.items);
 }
+
+test "empty directive" {}
