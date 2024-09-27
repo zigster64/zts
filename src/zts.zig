@@ -5,6 +5,7 @@ const Mode = enum {
     reading_directive_name,
     content_line,
     content_start,
+    builtin_form,
 };
 
 // s will return the section from the data, as a comptime known string
@@ -15,6 +16,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
     comptime var content_start = 0;
     comptime var content_end = 0;
     comptime var last_start_of_line = 0;
+    comptime var builtin_start = 0;
 
     @setEvalBranchQuota(1_000_000);
 
@@ -22,6 +24,12 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
         switch (mode) {
             .find_directive => {
                 switch (c) {
+                    '@' => {
+                        if (std.mem.eql(u8, str[index + 1 ..], "form")) {
+                            builtin_start = index;
+                            mode = .builtin_form;
+                        }
+                    },
                     '.' => {
                         maybe_directive_start = index;
                         mode = .reading_directive_name;
@@ -86,6 +94,15 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
+                switch (c) {
+                    '\n' => {
+                        mode = .find_directive;
+                        last_start_of_line = index + 1;
+                    },
+                    else => {},
+                }
+            },
+            .builtin_form => { // each the rest of the line till the next line
                 switch (c) {
                     '\n' => {
                         mode = .find_directive;
