@@ -1,5 +1,13 @@
 # ZTS
 
+## Other Zig template management tools to check out
+
+https://github.com/jetzig-framework/jetzig
+https://github.com/batiati/mustache-zig
+https://github.com/haze/etch
+
+also - https://github.com/kristoff-it/ziggy ... static site generator that has some interesting templating possibilities
+
 # Zig Templates made Simple (ZTS)
 
 ![zts](https://github.com/zigster64/zts/blob/main/docs/zts.jpg?raw=true)
