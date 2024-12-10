@@ -15,6 +15,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
     comptime var content_start = 0;
     comptime var content_end = 0;
     comptime var last_start_of_line = 0;
+    comptime var windows_cr = 0;
 
     @setEvalBranchQuota(1_000_000);
 
@@ -48,18 +49,23 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                         }
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
-                        const directive_name = str[directive_start + 1 .. index];
+                        const directive_name = str[directive_start + 1 .. index - windows_cr];
                         content_start = index + 1;
                         if (comptime std.mem.eql(u8, directive_name, directive.?)) {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
                         mode = .content_start;
+                        windows_cr = 0;
                     },
                     ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_start;
                         maybe_directive_start = directive_start;
+                        windows_cr = 0;
+                    },
+                    '\r' => {
+                        windows_cr = 1;
                     },
                     else => {},
                 }
@@ -117,6 +123,7 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
     var content_start: usize = 0;
     var content_end: usize = 0;
     var last_start_of_line: usize = 0;
+    var windows_cr: usize = 0;
 
     for (str, 0..) |c, index| {
         switch (mode) {
@@ -148,18 +155,23 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                         }
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
-                        const directive_name = str[directive_start + 1 .. index];
+                        const directive_name = str[directive_start + 1 .. index - windows_cr];
                         content_start = index + 1;
                         if (std.mem.eql(u8, directive_name, directive.?)) {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
                         mode = .content_start;
+                        windows_cr = 0;
                     },
                     ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_start;
                         maybe_directive_start = directive_start;
+                        windows_cr = 0;
+                    },
+                    '\r' => {
+                        windows_cr = 1;
                     },
                     else => {},
                 }
