@@ -48,7 +48,10 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                         }
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
-                        const directive_name = str[directive_start + 1 .. index];
+                        const directive_name = if (str[index - 1] == '\r')
+                            str[directive_start + 1 .. index - 1]
+                        else
+                            str[directive_start + 1 .. index];
                         content_start = index + 1;
                         if (comptime std.mem.eql(u8, directive_name, directive.?)) {
                             content_end = str.len - 1;
@@ -148,7 +151,10 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                         }
                         // found a new directive - we need to patch the value of the previous content then
                         directive_start = maybe_directive_start;
-                        const directive_name = str[directive_start + 1 .. index];
+                        const directive_name = if (str[index - 1] == '\r')
+                            str[directive_start + 1 .. index - 1]
+                        else
+                            str[directive_start + 1 .. index];
                         content_start = index + 1;
                         if (std.mem.eql(u8, directive_name, directive.?)) {
                             content_end = str.len - 1;
