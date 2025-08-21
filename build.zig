@@ -18,9 +18,11 @@ pub fn build(b: *std.Build) void {
     // benchmark demo app
     const exe = b.addExecutable(.{
         .name = "ZTS demo app",
-        .root_source_file = b.path("src/bench.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bench.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.addImport("zts", datastor_module);
     b.installArtifact(exe);
@@ -37,8 +39,11 @@ pub fn build(b: *std.Build) void {
     // unit tests
     const test_step = b.step("test", "Run unit tests (redirect stdout to /dev/null)");
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/zts.zig"),
-        .target = target,
+        .root_module = b.addModule("tests", .{
+            .root_source_file = b.path("src/zts.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);

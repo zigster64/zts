@@ -1,6 +1,7 @@
 .{
-    .name = "zts",
+    .name = .zts,
+    .fingerprint = 0x2478a8e0cba33891,
     .paths = .{""},
-    .version = "0.14.1",
+    .version = "0.15.1",
     .dependencies = .{},
 }
