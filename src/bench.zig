@@ -3,7 +3,9 @@ const zts = @import("zts.zig");
 
 pub fn main() !void {
     std.debug.print("Do 100k runs of passing data through HTML template\n", .{});
-    const out = std.io.getStdOut().writer(); // pipe this to /dev/null and time it
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const out = &stdout_writer.interface;
 
     const tmpl = @embedFile("testdata/customer_details.html");
 

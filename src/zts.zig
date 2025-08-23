@@ -259,7 +259,7 @@ test "foobar with multiple sections and no formatting" {
 }
 
 test "html file with multiple sections and formatting" {
-    var list = std.ArrayList(u8).init(std.testing.allocator);
+    var list = std.array_list.Managed(u8).init(std.testing.allocator);
     defer list.deinit();
 
     // var out = std.io.getStdErr().writer();
@@ -309,7 +309,7 @@ test "html file with multiple sections and formatting" {
 }
 
 test "statement in english or german based on LANG env var - runtime only" {
-    var list = std.ArrayList(u8).init(std.testing.allocator);
+    var list = std.array_list.Managed(u8).init(std.testing.allocator);
     defer list.deinit();
 
     // var out = std.io.getStdErr().writer();
