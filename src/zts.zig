@@ -232,6 +232,44 @@ pub fn write(str: []const u8, section: []const u8, out: anytype) !void {
     if (data != null) try out.writeAll(data.?);
 }
 
+test "comptime single character before a '.'" {
+    const data =
+        \\  something
+        \\  x.not_a_label();
+        \\  x.also_not_a_label
+        \\  .label
+        \\  label content
+    ;
+
+    // test that we can use the data as a comptime known format to pass through print
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, null), .{});
+    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
+    std.testing.allocator.free(formatted_data);
+
+    formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, "label"), .{});
+    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
+    std.testing.allocator.free(formatted_data);
+}
+
+test "runtime single character before a '.'" {
+    const data =
+        \\  something
+        \\  x.not_a_label();
+        \\  x.also_not_a_label
+        \\  .label
+        \\  label content
+    ;
+
+    // test that we can use the data during runtime
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, null)});
+    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
+    std.testing.allocator.free(formatted_data);
+
+    formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, "label")});
+    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
+    std.testing.allocator.free(formatted_data);
+}
+
 test "data with no sections, and formatting" {
     const data = @embedFile("testdata/all.txt");
     try std.testing.expectEqual(data.len, 78);
