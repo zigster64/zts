@@ -31,7 +31,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                     '\n' => {
                         last_start_of_line = index + 1;
                     },
-                    else => mode = .content_start,
+                    else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
@@ -134,7 +134,7 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                     '\n' => {
                         last_start_of_line = index + 1;
                     },
-                    else => mode = .content_start,
+                    else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
