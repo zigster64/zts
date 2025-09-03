@@ -4,7 +4,6 @@ const Mode = enum {
     find_directive,
     reading_directive_name,
     content_line,
-    content_start,
 };
 
 // s will return the section from the data, as a comptime known string
@@ -66,27 +65,6 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                         maybe_directive_start = directive_start;
                     },
                     else => {},
-                }
-            },
-            .content_start => {
-                // if the first non-whitespace char of content is a .
-                // then we are in find directive mode !
-                switch (c) {
-                    '\n' => {
-                        mode = .find_directive;
-                        last_start_of_line = index + 1;
-                    },
-                    ' ', '\t' => {}, // eat whitespace
-                    '.' => {
-                        // thinks we are looking for content, but last directive
-                        // was empty, so start a new directive on this line
-                        maybe_directive_start = index;
-                        last_start_of_line = content_start;
-                        mode = .reading_directive_name;
-                    },
-                    else => {
-                        mode = .content_line;
-                    },
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
@@ -170,27 +148,6 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                         maybe_directive_start = directive_start;
                     },
                     else => {},
-                }
-            },
-            .content_start => {
-                // if the first non-whitespace char of content is a .
-                // then we are in find directive mode !
-                switch (c) {
-                    '\n' => {
-                        mode = .find_directive;
-                        last_start_of_line = index + 1;
-                    },
-                    ' ', '\t' => {}, // eat whitespace
-                    '.' => {
-                        // thinks we are looking for content, but last directive
-                        // was empty, so start a new directive on this line
-                        maybe_directive_start = index;
-                        last_start_of_line = content_start;
-                        mode = .reading_directive_name;
-                    },
-                    else => {
-                        mode = .content_line;
-                    },
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
