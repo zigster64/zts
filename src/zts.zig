@@ -59,7 +59,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                         last_start_of_line = index + 1;
                         mode = .find_directive;
                     },
-                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    '\x01'...'\t', '\x0B'...'\x1F', ' '...'/', ':'...'@', '{'...'}', '['...'^', '`' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_line;
                         maybe_directive_start = directive_start;
@@ -142,7 +142,7 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                         last_start_of_line = index + 1;
                         mode = .find_directive;
                     },
-                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    '\x00'...'\t', '\x0B'...'\x1F', ' '...'/', ':'...'@', '{'...'}', '['...'^', '`' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
                         mode = .content_line;
                         maybe_directive_start = directive_start;
