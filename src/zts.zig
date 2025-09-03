@@ -4,7 +4,6 @@ const Mode = enum {
     find_directive,
     reading_directive_name,
     content_line,
-    content_start,
 };
 
 // s will return the section from the data, as a comptime known string
@@ -31,7 +30,7 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                     '\n' => {
                         last_start_of_line = index + 1;
                     },
-                    else => mode = .content_start,
+                    else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
@@ -57,35 +56,15 @@ pub fn s(comptime str: []const u8, comptime directive: ?[]const u8) []const u8 {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
-                        mode = .content_start;
+                        last_start_of_line = index + 1;
+                        mode = .find_directive;
                     },
-                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    '\x01'...'\t', '\x0B'...'\x1F', ' '...'/', ':'...'@', '{'...'}', '['...'^', '`' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
-                        mode = .content_start;
+                        mode = .content_line;
                         maybe_directive_start = directive_start;
                     },
                     else => {},
-                }
-            },
-            .content_start => {
-                // if the first non-whitespace char of content is a .
-                // then we are in find directive mode !
-                switch (c) {
-                    '\n' => {
-                        mode = .find_directive;
-                        last_start_of_line = index + 1;
-                    },
-                    ' ', '\t' => {}, // eat whitespace
-                    '.' => {
-                        // thinks we are looking for content, but last directive
-                        // was empty, so start a new directive on this line
-                        maybe_directive_start = index;
-                        last_start_of_line = content_start;
-                        mode = .reading_directive_name;
-                    },
-                    else => {
-                        mode = .content_line;
-                    },
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
@@ -134,7 +113,7 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                     '\n' => {
                         last_start_of_line = index + 1;
                     },
-                    else => mode = .content_start,
+                    else => mode = .content_line,
                 }
             },
             .reading_directive_name => {
@@ -160,35 +139,15 @@ pub fn lookup(str: []const u8, directive: ?[]const u8) ?[]const u8 {
                             content_end = str.len - 1;
                             // @compileLog("found directive in data", directive_name, "starts at", content_start, "runs to", content_end);
                         }
-                        mode = .content_start;
+                        last_start_of_line = index + 1;
+                        mode = .find_directive;
                     },
-                    ' ', '\t', '.', '{', '}', '[', ']', ':' => { // invalid chars for directive name
+                    '\x00'...'\t', '\x0B'...'\x1F', ' '...'/', ':'...'@', '{'...'}', '['...'^', '`' => { // invalid chars for directive name
                         // @compileLog("false alarm scanning directive, back to content", str[maybe_directive_start .. index + 1]);
-                        mode = .content_start;
+                        mode = .content_line;
                         maybe_directive_start = directive_start;
                     },
                     else => {},
-                }
-            },
-            .content_start => {
-                // if the first non-whitespace char of content is a .
-                // then we are in find directive mode !
-                switch (c) {
-                    '\n' => {
-                        mode = .find_directive;
-                        last_start_of_line = index + 1;
-                    },
-                    ' ', '\t' => {}, // eat whitespace
-                    '.' => {
-                        // thinks we are looking for content, but last directive
-                        // was empty, so start a new directive on this line
-                        maybe_directive_start = index;
-                        last_start_of_line = content_start;
-                        mode = .reading_directive_name;
-                    },
-                    else => {
-                        mode = .content_line;
-                    },
                 }
             },
             .content_line => { // just eat the rest of the line till the next line
@@ -230,6 +189,44 @@ pub fn writeHeader(str: []const u8, out: anytype) !void {
 pub fn write(str: []const u8, section: []const u8, out: anytype) !void {
     const data = lookup(str, section);
     if (data != null) try out.writeAll(data.?);
+}
+
+test "comptime single character before a '.'" {
+    const data =
+        \\  something
+        \\  x.not_a_label();
+        \\  x.also_not_a_label
+        \\  .label
+        \\  label content
+    ;
+
+    // test that we can use the data as a comptime known format to pass through print
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, null), .{});
+    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
+    std.testing.allocator.free(formatted_data);
+
+    formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, "label"), .{});
+    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
+    std.testing.allocator.free(formatted_data);
+}
+
+test "runtime single character before a '.'" {
+    const data =
+        \\  something
+        \\  x.not_a_label();
+        \\  x.also_not_a_label
+        \\  .label
+        \\  label content
+    ;
+
+    // test that we can use the data during runtime
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, null)});
+    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
+    std.testing.allocator.free(formatted_data);
+
+    formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, "label")});
+    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
+    std.testing.allocator.free(formatted_data);
 }
 
 test "data with no sections, and formatting" {
