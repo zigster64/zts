@@ -37,7 +37,7 @@ pub fn main() !void {
         try zts.print(tmpl, "customer_details", customer, out);
 
         // print a table of customer invoices
-        try zts.print(tmpl, "invoice_table", .{}, out);
+        try zts.write(tmpl, "invoice_table", out);
         var total: f32 = 0.0;
         inline for (invoices) |inv| {
             try zts.print(tmpl, "invoice_row", inv, out);

@@ -185,7 +185,7 @@ pub fn writeHeader(comptime str: []const u8, out: anytype) !void {
     try out.writeAll(comptime s(str, null));
 }
 
-pub fn write(comptime str: []const u8, section: []const u8, out: anytype) !void {
+pub fn write(comptime str: []const u8, comptime section: []const u8, out: anytype) !void {
     try out.writeAll(comptime s(str, section));
 }
 
