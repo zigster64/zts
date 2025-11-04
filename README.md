@@ -105,6 +105,8 @@ ZTS provides helper functions that make it easier to print.
 
 `zts.write(tmpl, section_name, writer)` works like `write()` in Zig.
 
+In both cases, "section_name" must be comptime known, to extract it out of the tmpl as a comptime known string.
+
 
 ```
 .foo
@@ -131,7 +133,7 @@ for example, if you add this to the code above :
 ```zig
 try zts.print(tmpl, "other", .{}, out);
 or
-try zts.write(tmpl, "other");
+try zts.write(tmpl, "other", out);
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
@@ -178,12 +180,15 @@ if (dynamic_template_section == null) {
 }
 try out.writeAll(dynamic_template_section);
 
-// or you can do this using the write helper functions
+// or you can do all the above using the writeDynamic helper functions
 // note that if there is no PLANET env, then nothing is printed
 try zts.writeDynamic(tmpl, os.getenv("PLANET"), out);  
 
 // but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
 try out.print(dynamic_template_section, .{customer_details});  // <<-- compile error ! dynamic_template_section is not comptime known
+
+// or this, because zts.write() needs a comptime known section name
+try zts.write(tmlp, os.getenv("PLANET"), out)
 
 // and you cant do this either, because s() demands comptime params too
 const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- compile error !  unable to resovle comptime value
@@ -191,7 +196,7 @@ const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- c
 
 Comptime restrictions can be a pain.
 
-ZTS `lookup()`, and `writeDynamic()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
+ZTS `lookup()`, and `writeDynamic()` might be able to help you out if you need to do some dynamic processing at runtime .. or it might not, 
 depending on how deep a hole of meta programming you are in.
 
 
@@ -410,13 +415,13 @@ Code to process this :
 
 // dynamically create the label at runtime, based on the LANG env var
 // restriction here is that because the section label is dynamic, it cant be comptime
-// ... and therefore cant be used with the print variants
+// ... and therefore cant be used with the print or write variants
 
 try terms_section = std.fmt.allocPrint(allocator, "terms_{s}", std.os.getenv("LANG").?[0..2]);
 defer allocator.free(section);
 
 try zts.printHeader(tmpl, "Dear Customer", out);
-try zts.write(tmpl, terms_section, out);
+try zts.writeDynamic(tmpl, terms_section, out);
 }
 ```
 
@@ -426,7 +431,7 @@ Or we can even mix up the order of sections in the output depending on some vari
 
 ```zig
 if (is_northern_hemisphere) try zts.printHeader(tmpl, "Dear Customer", out);
-try zts.write(tmpl, terms_section, out);
+try zts.writeDynamic(tmpl, terms_section, out);
 if (is_southern_hemisphere) try zts.printHeader(tmpl, "Mate", out);
 ```
 
