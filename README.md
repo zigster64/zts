@@ -130,6 +130,8 @@ for example, if you add this to the code above :
 
 ```zig
 try zts.print(tmpl, "other", .{}, out);
+or
+try zts.write(tmpl, "other");
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
@@ -150,14 +152,13 @@ If you want to pass data through template segments using the built in Zig `print
 There are no exceptions to this, its just the way that Zig `print` works.
 
 If your template segments DO NOT have print formatting, do not need argument processing, and are just blocks of text,
-then you can use the `write` variant helper functions that ZTS provides.
+then you can use the `writeDynamic` variant helper functions that ZTS provides.
 
 ```zig
-try zts.writeHeader(template, out);
-try zts.write(template, section, out);
+try zts.writeDynamic(template, section, out);
 ```
 
-When using `write(template, section, out)` ... if the section is null, or cannot be found in the data, then write() will
+When using `writeDynamic(template, section, out)` ... if the section is null, or cannot be found in the data, then write() will
 print nothing. 
 
 There is also a `lookup()` function that takes runtime / dynamic labels, and returns a non-comptime string of the section ... or `null` if not found.
@@ -179,7 +180,7 @@ try out.writeAll(dynamic_template_section);
 
 // or you can do this using the write helper functions
 // note that if there is no PLANET env, then nothing is printed
-try zts.write(tmpl, os.getenv("PLANET"), out);  
+try zts.writeDynamic(tmpl, os.getenv("PLANET"), out);  
 
 // but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
 try out.print(dynamic_template_section, .{customer_details});  // <<-- compile error ! dynamic_template_section is not comptime known
@@ -190,7 +191,7 @@ const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- c
 
 Comptime restrictions can be a pain.
 
-ZTS `lookup()`, `writeHeader()`, and `write()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
+ZTS `lookup()`, and `writeDynamic()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
 depending on how deep a hole of meta programming you are in.
 
 
@@ -251,7 +252,7 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
         .credit = cust.credit,
    });
 
-   try zts.print(tmpl, "invoice_table", .{}, out);
+   try zts.write(tmpl, "invoice_table", out);
     for (cust.invoices) |invoice|  {
       try zts.print(tmpl, "invoice_row", .{
           .date = invoice.date,

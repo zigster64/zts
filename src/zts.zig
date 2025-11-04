@@ -181,12 +181,15 @@ pub fn print(comptime str: []const u8, comptime section: []const u8, args: anyty
     try out.print(comptime s(str, section), args);
 }
 
-pub fn writeHeader(str: []const u8, out: anytype) !void {
-    const data = lookup(str, null);
-    if (data != null) try out.writeAll(data.?);
+pub fn writeHeader(comptime str: []const u8, out: anytype) !void {
+    try out.writeAll(comptime s(str, null));
 }
 
-pub fn write(str: []const u8, section: []const u8, out: anytype) !void {
+pub fn write(comptime str: []const u8, section: []const u8, out: anytype) !void {
+    try out.writeAll(comptime s(str, section));
+}
+
+pub fn writeDynamic(str: []const u8, section: []const u8, out: anytype) !void {
     const data = lookup(str, section);
     if (data != null) try out.writeAll(data.?);
 }
@@ -317,11 +320,11 @@ test "statement in english or german based on LANG env var - runtime only" {
     var lang = std.posix.getenv("LANG").?[0..2];
 
     try writeHeader(data, out);
-    try write(data, "terms_" ++ lang, out);
+    try writeDynamic(data, "terms_" ++ lang, out);
 
     // try it again in german
     lang = "de";
-    try write(data, "terms_" ++ lang, out);
+    try writeDynamic(data, "terms_" ++ lang, out);
 
     const expected_data = @embedFile("testdata/english_german_statement.txt");
     try std.testing.expectEqualSlices(u8, expected_data, list.items);
