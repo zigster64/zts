@@ -10,6 +10,17 @@ also:
 
 - https://github.com/kristoff-it/ziggy ... static site generator that has some interesting templating possibilities
 
+# Breaking Change - Nov 2025
+
+Refer to this issue for discussion
+https://github.com/zigster64/zts/issues/6
+
+Breaking change is that both `write()` and `writeHeader()` are now fully comptime, needing a comptime known "section" param.
+
+If you are using `write()` in existing code to make use of dynamic section names, then please use the new function `writeDynamic()` which fills this niche use case.
+
+If you are not using dynamic section names, then you shouldnt need any changes to your code.
+
 # Zig Templates made Simple (ZTS)
 
 ![zts](https://github.com/zigster64/zts/blob/main/docs/zts.jpg?raw=true)
@@ -20,7 +31,6 @@ Simple:
 - Uses Zig like field tags in your template
 - Uses Zig `fmt.print` for formatting data 
 - No funky new templating syntax, no DSL, no new formatting conventions to learn
-- Outputs to Zig `writer` interface. Use it in web server apps !
 
 Maintainable:
 - Control of the template logic is done in your Zig code, not delegated to the template engine
@@ -105,12 +115,16 @@ ZTS provides helper functions that make it easier to print.
 
 `zts.write(tmpl, section_name, writer)` works like `write()` in Zig.
 
+In both cases, "section_name" must be comptime known, to extract it out of the tmpl as a comptime known string.
+
 
 ```
 .foo
 I like {s}
 .bar
 I prefer {s}
+.baz
+I dont really like either
 ```
 
 ```zig
@@ -119,6 +133,7 @@ const tmpl = @embedFile("foobar.txt");
 
 try zts.print(tmpl, "foo", .{"daytime"}, out);
 try zts.print(tmpl, "bar", .{"nighttime"}, out);
+try zts.write(tmpl, "baz", out);
 
 ```
 
@@ -130,6 +145,8 @@ for example, if you add this to the code above :
 
 ```zig
 try zts.print(tmpl, "other", .{}, out);
+or
+try zts.write(tmpl, "other", out);
 ```
 
 This will throw a compile error saying that there is no section labelled `other` in the template.
@@ -143,28 +160,26 @@ error in the Zig code, saying that the string parameter "daytime" does not match
 There is no great magic here, its just the power of Zig comptime, as it is actively parsing the text templates at compile time,
 and using the built in Zig `print` formatting which also evaluates at compile time.
 
-## ZTS runtime / non-comptime helper functions
+## ZTS helper functions for runtime known section names
 
 If you want to pass data through template segments using the built in Zig `print` functions on the writer, then everything must be comptime.
 
 There are no exceptions to this, its just the way that Zig `print` works.
 
-If your template segments DO NOT have print formatting, do not need argument processing, and are just blocks of text,
-then you can use the `write` variant helper functions that ZTS provides.
+If your template section names are only known at runtime, then its only possible to get the segment contents at runtime, making them
+unusable for `print()` or `write()`.
+
+To solve this edge case, you can use the `writeDynamic` variant helper functions that ZTS provides to do all the template lookups at runtime.
 
 ```zig
-try zts.writeHeader(template, out);
-try zts.write(template, section, out);
+try zts.writeDynamic(template, section, out);
 ```
 
-When using `write(template, section, out)` ... if the section is null, or cannot be found in the data, then write() will
+When using `writeDynamic(template, section, out)` ... if the section is null, or cannot be found in the data, then writeDynamice() will
 print nothing. 
 
 There is also a `lookup()` function that takes runtime / dynamic labels, and returns a non-comptime string of the section ... or `null` if not found.
 Its a runtime version of the `s()` function, that can be used with dynamic labels.
-
-You can ONLY use the return data from `lookup()` in a non-comptime context though, such as using the data in a `writeAll()` statement.
-
 
 example:
 ```zig
@@ -177,12 +192,15 @@ if (dynamic_template_section == null) {
 }
 try out.writeAll(dynamic_template_section);
 
-// or you can do this using the write helper functions
+// or you can do all the above using the writeDynamic helper functions
 // note that if there is no PLANET env, then nothing is printed
-try zts.write(tmpl, os.getenv("PLANET"), out);  
+try zts.writeDynamic(tmpl, os.getenv("PLANET"), out);  
 
 // but you cant do this, because print NEEDS comptime values only, and lookup is a runtime variant
 try out.print(dynamic_template_section, .{customer_details});  // <<-- compile error ! dynamic_template_section is not comptime known
+
+// or this, because zts.print() & zts.write() need a comptime known section name
+try zts.write(tmpl, os.getenv("PLANET"), out)
 
 // and you cant do this either, because s() demands comptime params too
 const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- compile error !  unable to resovle comptime value
@@ -190,7 +208,7 @@ const printable_dynamic_section = zts.s(tmpl, os.getenv("PLANET").?);  // <<-- c
 
 Comptime restrictions can be a pain.
 
-ZTS `lookup()`, `writeHeader()`, and `write()` might be able to help you out if you need to do some dynamic processing .. or it might not, 
+ZTS `lookup()`, and `writeDynamic()` might be able to help you out if you need to do some dynamic processing at runtime .. or it might not, 
 depending on how deep a hole of meta programming you are in.
 
 
@@ -251,7 +269,7 @@ fn printCustomerDetails(out: anytype, cust: *CustomerDetails) !void {
         .credit = cust.credit,
    });
 
-   try zts.print(tmpl, "invoice_table", .{}, out);
+   try zts.write(tmpl, "invoice_table", out);
     for (cust.invoices) |invoice|  {
       try zts.print(tmpl, "invoice_row", .{
           .date = invoice.date,
@@ -409,13 +427,13 @@ Code to process this :
 
 // dynamically create the label at runtime, based on the LANG env var
 // restriction here is that because the section label is dynamic, it cant be comptime
-// ... and therefore cant be used with the print variants
+// ... and therefore cant be used with the print or write variants
 
 try terms_section = std.fmt.allocPrint(allocator, "terms_{s}", std.os.getenv("LANG").?[0..2]);
 defer allocator.free(section);
 
 try zts.printHeader(tmpl, "Dear Customer", out);
-try zts.write(tmpl, terms_section, out);
+try zts.writeDynamic(tmpl, terms_section, out);
 }
 ```
 
@@ -425,7 +443,7 @@ Or we can even mix up the order of sections in the output depending on some vari
 
 ```zig
 if (is_northern_hemisphere) try zts.printHeader(tmpl, "Dear Customer", out);
-try zts.write(tmpl, terms_section, out);
+try zts.writeDynamic(tmpl, terms_section, out);
 if (is_southern_hemisphere) try zts.printHeader(tmpl, "Mate", out);
 ```
 
