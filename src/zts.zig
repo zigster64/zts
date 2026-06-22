@@ -205,49 +205,42 @@ const EnumSegment = union(enum) {
     enum_end,
     if_begin_method: IdxPair,
     if_begin_var: IdxPair,
+    if_eq_var: IdxPair,
+    if_ne_var: IdxPair,
     if_end,
 };
 
 fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
     @setEvalBranchQuota(1_000_000);
 
-    const end_pos = comptime std.mem.indexOf(u8, content, "{{/enum}}") orelse
-        @compileError("Missing {{/enum}} in section");
-    var end = end_pos;
-    if (end > 0 and content[end - 1] == '\n') end -= 1;
-    if (end > 0 and content[end - 1] == '\r') end -= 1;
-    var start: usize = 0;
-    if (comptime std.mem.startsWith(u8, content, "{{@enum")) {
-        start = (comptime std.mem.indexOfScalar(u8, content, '\n') orelse end) + 1;
-    }
-    const trimmed = content[start..end];
-
     comptime var segments: [128]EnumSegment = undefined;
     comptime var seg_count: usize = 0;
     comptime var lit_start: usize = 0;
     comptime var skip: usize = 0;
+    comptime var done = false;
 
-    inline for (trimmed, 0..) |c, idx| {
+    inline for (content, 0..) |c, idx| {
+        if (done) break;
         if (skip > 0) {
-            if (c == '}' and idx + 1 < trimmed.len and trimmed[idx + 1] == '}') {
+            if (c == '}' and idx + 1 < content.len and content[idx + 1] == '}') {
                 skip -= 1;
                 if (skip == 0) lit_start = idx + 2;
             }
-            if (c == '{' and idx + 1 < trimmed.len and trimmed[idx + 1] == '{') {
+            if (c == '{' and idx + 1 < content.len and content[idx + 1] == '{') {
                 skip += 1;
             }
             continue;
         }
 
-        if (c == '{' and idx + 1 < trimmed.len and trimmed[idx + 1] == '{') {
+        if (c == '{' and idx + 1 < content.len and content[idx + 1] == '{') {
             if (idx > lit_start) {
-                segments[seg_count] = .{ .literal = trimmed[lit_start..idx] };
+                segments[seg_count] = .{ .literal = content[lit_start..idx] };
                 seg_count += 1;
             }
             const inner_start = idx + 2;
-            const close = comptime std.mem.indexOfPos(u8, trimmed, inner_start, "}}") orelse
+            const close = comptime std.mem.indexOfPos(u8, content, inner_start, "}}") orelse
                 @compileError("Unclosed '{{' marker");
-            const inner = trimmed[inner_start..close];
+            const inner = content[inner_start..close];
 
             if (inner.len == 1 and inner[0] == '.') {
                 segments[seg_count] = .enum_self;
@@ -257,6 +250,11 @@ fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
                 segments[seg_count] = .enum_begin;
             } else if (comptime std.mem.eql(u8, inner, "/enum")) {
                 segments[seg_count] = .enum_end;
+                done = true;
+            } else if (comptime std.mem.startsWith(u8, inner, "@if eq . $.")) {
+                segments[seg_count] = .{ .if_eq_var = .{ .start = inner_start + 11, .end = close } };
+            } else if (comptime std.mem.startsWith(u8, inner, "@if ne . $.")) {
+                segments[seg_count] = .{ .if_ne_var = .{ .start = inner_start + 11, .end = close } };
             } else if (comptime std.mem.startsWith(u8, inner, "@if .")) {
                 segments[seg_count] = .{ .if_begin_method = .{ .start = inner_start + 5, .end = close } };
             } else if (comptime std.mem.startsWith(u8, inner, "@if $.")) {
@@ -272,8 +270,8 @@ fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
         }
     }
 
-    if (lit_start < trimmed.len) {
-        segments[seg_count] = .{ .literal = trimmed[lit_start..trimmed.len] };
+    if (!done and lit_start < content.len) {
+        segments[seg_count] = .{ .literal = content[lit_start..content.len] };
         seg_count += 1;
     }
 
@@ -353,6 +351,30 @@ pub fn printEnum(
                     }
                     if (comptime !matched) @compileError("Context missing field '" ++ vn ++ "'");
                 },
+                .if_eq_var => |idx| {
+                    const vn = content[idx.start..idx.end];
+                    const fields = comptime @typeInfo(@TypeOf(context)).@"struct".fields;
+                    comptime var matched = false;
+                    inline for (fields) |ctx_field| {
+                        if (comptime std.mem.eql(u8, ctx_field.name, vn)) {
+                            if (val != @field(context, ctx_field.name)) skip_depth += 1;
+                            matched = true;
+                        }
+                    }
+                    if (comptime !matched) @compileError("Context missing field '" ++ vn ++ "'");
+                },
+                .if_ne_var => |idx| {
+                    const vn = content[idx.start..idx.end];
+                    const fields = comptime @typeInfo(@TypeOf(context)).@"struct".fields;
+                    comptime var matched = false;
+                    inline for (fields) |ctx_field| {
+                        if (comptime std.mem.eql(u8, ctx_field.name, vn)) {
+                            if (val == @field(context, ctx_field.name)) skip_depth += 1;
+                            matched = true;
+                        }
+                    }
+                    if (comptime !matched) @compileError("Context missing field '" ++ vn ++ "'");
+                },
                 else => {},
             }
 
@@ -374,3 +396,172 @@ pub fn printEnum(
         }
     }
 }
+// ---- test utilities ----
+
+const TestWriter = struct {
+    list: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+
+    pub fn writeAll(self: @This(), bytes: []const u8) error{OutOfMemory}!void {
+        try self.list.appendSlice(self.allocator, bytes);
+    }
+
+    pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
+        const formatted = try std.fmt.allocPrint(self.allocator, fmt, args);
+        defer self.allocator.free(formatted);
+        try self.list.appendSlice(self.allocator, formatted);
+    }
+
+    pub fn write(self: @This(), bytes: []const u8) error{OutOfMemory}!usize {
+        try self.list.appendSlice(self.allocator, bytes);
+        return bytes.len;
+    }
+};
+
+fn makeTestWriter(list: *std.ArrayList(u8), allocator: std.mem.Allocator) TestWriter {
+    return .{ .list = list, .allocator = allocator };
+}
+
+test "comptime single character before a '.'" {
+    const data =
+        \\  something
+        \\  x.not_a_label();
+        \\  x.also_not_a_label
+        \\  .label
+        \\  label content
+    ;
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, null), .{});
+    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
+    std.testing.allocator.free(formatted_data);
+    formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, "label"), .{});
+    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
+    std.testing.allocator.free(formatted_data);
+}
+
+test "runtime single character before a '.'" {
+    const data =
+        \\  something
+        \\  x.not_a_label();
+        \\  x.also_not_a_label
+        \\  .label
+        \\  label content
+    ;
+    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, null)});
+    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
+    std.testing.allocator.free(formatted_data);
+    formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, "label")});
+    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
+    std.testing.allocator.free(formatted_data);
+}
+
+test "data with no sections, and formatting" {
+    const data = @embedFile("testdata/all.txt");
+    try std.testing.expectEqual(data.len, 78);
+    const formatted_data = try std.fmt.allocPrint(std.testing.allocator, data, .{"embedded formatting"});
+    try std.testing.expectEqual(formatted_data.len, 94);
+    std.testing.allocator.free(formatted_data);
+}
+
+test "foobar with multiple sections and no formatting" {
+    const data = @embedFile("testdata/foobar1.txt");
+    try std.testing.expectEqual(data.len, 91);
+    const foo = s(data, "foo");
+    try std.testing.expectEqualSlices(u8, "I like the daytime\n", foo);
+    const bar = s(data, "bar");
+    try std.testing.expectEqualSlices(u8, "I prefer the nighttime\n", bar);
+    const empty = s(data, "empty");
+    try std.testing.expectEqualSlices(u8, "", empty);
+    const notempty = s(data, "notempty");
+    try std.testing.expectEqualSlices(u8, "This has some content\n", notempty);
+}
+
+test "html file with multiple sections and formatting" {
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+    const out = makeTestWriter(&list, std.testing.allocator);
+    const data = @embedFile("testdata/customer_details.html");
+    const Invoice = struct { date: []const u8, details: []const u8, amount: f32 };
+    const customer = .{ .name = "Joe Blow", .address = "21 Main Street", .credit = 100.0 };
+    const invoices = &[_]Invoice{
+        .{ .date = "2023-10-01", .details = "New Hoodie", .amount = 80.99 },
+        .{ .date = "2023-10-03", .details = "Hotdog with Sauce", .amount = 4.50 },
+        .{ .date = "2023-10-04", .details = "Mystery Gift", .amount = 12.00 },
+        .{ .date = "2023-10-12", .details = "Model Aircraft", .amount = 48.00 },
+        .{ .date = "2023-10-24", .details = "Chocolate Milkshake", .amount = 80.99 },
+    };
+    try printHeader(data, .{}, out);
+    try print(data, "customer_details", customer, out);
+    try print(data, "invoice_table", .{}, out);
+    var total: f32 = 0.0;
+    inline for (invoices) |inv| {
+        try print(data, "invoice_row", inv, out);
+        total += inv.amount;
+    }
+    try print(data, "invoice_total", .{ .total = total }, out);
+    const expected_data = @embedFile("testdata/customer_details.expected.html");
+    try std.testing.expectEqualSlices(u8, expected_data, list.items);
+}
+
+test "statement in english or german based on LANG env var - runtime only" {
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+    const out = makeTestWriter(&list, std.testing.allocator);
+    const data = @embedFile("testdata/you-owe-us.txt");
+    var lang = "en";
+    try writeHeader(data, out);
+    try writeDynamic(data, "terms_" ++ lang, out);
+    lang = "de";
+    try writeDynamic(data, "terms_" ++ lang, out);
+    const expected_data = @embedFile("testdata/english_german_statement.txt");
+    try std.testing.expectEqualSlices(u8, expected_data, list.items);
+}
+
+test "enumEach - {{.method}} interpolation with {{@enum}}" {
+    const Grade = enum { veteran, elite, regular,
+        pub fn slug(self: @This()) []const u8 { return switch (self) { .veteran => "vet", .elite => "elite", .regular => "reg" }; }
+        pub fn label(self: @This()) []const u8 { return @tagName(self); }
+    };
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+    const out = makeTestWriter(&list, std.testing.allocator);
+    const data = @embedFile("testdata/enum_options.txt");
+    try printEnum(data, "options", Grade, .{}, out);
+    const expected = "\n<option value=\"vet\">veteran</option>\n\n<option value=\"elite\">elite</option>\n\n<option value=\"reg\">regular</option>\n";
+    try std.testing.expectEqualSlices(u8, expected, list.items);
+}
+
+test "enumEach - {{@if eq . $.var}}" {
+    const Grade = enum { veteran, elite, regular,
+        pub fn slug(self: @This()) []const u8 { return switch (self) { .veteran => "vet", .elite => "elite", .regular => "reg" }; }
+        pub fn label(self: @This()) []const u8 { return @tagName(self); }
+    };
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+    const out = makeTestWriter(&list, std.testing.allocator);
+    const Ctx = struct { active: Grade };
+    const data = ".grades\n{{@enum Grade}}\n<option value=\"{{.slug}}\"{{@if eq . $.active}} selected{{/if}}>{{.label}}</option>\n{{/enum}}\n";
+    try printEnum(data, "grades", Grade, Ctx{ .active = .elite }, out);
+    const expected = "\n<option value=\"vet\">veteran</option>\n\n<option value=\"elite\" selected>elite</option>\n\n<option value=\"reg\">regular</option>\n";
+    try std.testing.expectEqualSlices(u8, expected, list.items);
+}
+
+test "enumEach - {{@if ne . $.var}}" {
+    const Grade = enum { veteran, elite, regular,
+        pub fn label(self: @This()) []const u8 { return @tagName(self); }
+    };
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+    const out = makeTestWriter(&list, std.testing.allocator);
+    const Ctx = struct { exclude: Grade };
+    const data = ".items\n{{@enum Grade}}\n{{@if ne . $.exclude}}{{.label}},{{/if}}\n{{/enum}}\n";
+    try printEnum(data, "items", Grade, Ctx{ .exclude = .elite }, out);
+    const expected = "\nveteran,\n\n\n\nregular,\n";
+    try std.testing.expectEqualSlices(u8, expected, list.items);
+}
+
+test "empty directive" {}
