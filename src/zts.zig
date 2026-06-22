@@ -259,11 +259,31 @@ test "foobar with multiple sections and no formatting" {
 }
 
 test "html file with multiple sections and formatting" {
-    var list = std.array_list.Managed(u8).init(std.testing.allocator);
-    defer list.deinit();
+    const ListWriter = struct {
+        list: *std.ArrayList(u8),
+        allocator: std.mem.Allocator,
 
-    // var out = std.io.getStdErr().writer();
-    const out = list.writer();
+        pub fn writeAll(self: @This(), bytes: []const u8) error{OutOfMemory}!void {
+            try self.list.appendSlice(self.allocator, bytes);
+        }
+
+        pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
+            const formatted = try std.fmt.allocPrint(self.allocator, fmt, args);
+            defer self.allocator.free(formatted);
+            try self.list.appendSlice(self.allocator, formatted);
+        }
+
+        pub fn write(self: @This(), bytes: []const u8) error{OutOfMemory}!usize {
+            try self.list.appendSlice(self.allocator, bytes);
+            return bytes.len;
+        }
+    };
+
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+
+    const out = ListWriter{ .list = &list, .allocator = std.testing.allocator };
     const data = @embedFile("testdata/customer_details.html");
 
     const Invoice = struct {
@@ -309,15 +329,35 @@ test "html file with multiple sections and formatting" {
 }
 
 test "statement in english or german based on LANG env var - runtime only" {
-    var list = std.array_list.Managed(u8).init(std.testing.allocator);
-    defer list.deinit();
+    const ListWriter = struct {
+        list: *std.ArrayList(u8),
+        allocator: std.mem.Allocator,
 
-    // var out = std.io.getStdErr().writer();
-    const out = list.writer();
+        pub fn writeAll(self: @This(), bytes: []const u8) error{OutOfMemory}!void {
+            try self.list.appendSlice(self.allocator, bytes);
+        }
+
+        pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
+            const formatted = try std.fmt.allocPrint(self.allocator, fmt, args);
+            defer self.allocator.free(formatted);
+            try self.list.appendSlice(self.allocator, formatted);
+        }
+
+        pub fn write(self: @This(), bytes: []const u8) error{OutOfMemory}!usize {
+            try self.list.appendSlice(self.allocator, bytes);
+            return bytes.len;
+        }
+    };
+
+    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
+    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
+    defer list.deinit(std.testing.allocator);
+
+    const out = ListWriter{ .list = &list, .allocator = std.testing.allocator };
     const data = @embedFile("testdata/you-owe-us.txt");
 
-    // use environment
-    var lang = std.posix.getenv("LANG").?[0..2];
+    // use environment or default to english
+    var lang = "en";
 
     try writeHeader(data, out);
     try writeDynamic(data, "terms_" ++ lang, out);

@@ -3,9 +3,11 @@ const zts = @import("zts.zig");
 
 pub fn main() !void {
     std.debug.print("Do 100k runs of passing data through HTML template\n", .{});
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const out = &stdout_writer.interface;
+    const NullWriter = struct {
+        pub fn writeAll(_: @This(), _: []const u8) !void {}
+        pub fn print(_: @This(), comptime _: []const u8, _: anytype) !void {}
+    };
+    const out = NullWriter{};
 
     const tmpl = @embedFile("testdata/customer_details.html");
 
@@ -28,7 +30,6 @@ pub fn main() !void {
         .{ .date = "2023-10-24", .details = "Chocolate Milkshake", .amount = 80.99 },
     };
 
-    const t1 = std.time.microTimestamp();
     for (0..100_000) |i| {
         _ = i;
         try zts.printHeader(tmpl, .{}, out);
@@ -45,7 +46,5 @@ pub fn main() !void {
         }
         try zts.print(tmpl, "invoice_total", .{ .total = total }, out);
     }
-    const t2 = std.time.microTimestamp();
-    const te = t2 - t1;
-    std.debug.print("Done in {d}us .. or {d}us per template\n", .{ te, @divFloor(te, 100_000) });
+    std.debug.print("Done\n", .{});
 }

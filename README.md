@@ -1,14 +1,10 @@
 # ZTS
 
-## Other Zig template management tools to check out
+Zig Templates made Simple
 
-- https://github.com/jetzig-framework/zmpl
-- https://github.com/batiati/mustache-zig
-- https://github.com/haze/etch
+A template library for Zig that executes at comptime to divide a given input file into named sections.
 
-also:
-
-- https://github.com/kristoff-it/ziggy ... static site generator that has some interesting templating possibilities
+# Jun 2026 - Updated to work with Zig 0.16
 
 # Breaking Change - Nov 2025
 
@@ -584,3 +580,12 @@ to produce the output :
 I like daytime, yes I do !
 I prefer nighttime because its quieter
 ```
+## Other Zig template management tools to check out
+
+- https://github.com/jetzig-framework/zmpl
+- https://github.com/batiati/mustache-zig
+- https://github.com/haze/etch
+
+also:
+
+- https://github.com/kristoff-it/ziggy ... static site generator that has some interesting templating possibilities
