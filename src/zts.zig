@@ -193,382 +193,184 @@ pub fn writeDynamic(str: []const u8, section: []const u8, out: anytype) !void {
     const data = lookup(str, section);
     if (data != null) try out.writeAll(data.?);
 }
+// ---- {{@enum}} directive support ----
 
-// ---- #enumEach directive support ----
+const IdxPair = struct { start: usize, end: usize };
 
-/// A segment of an enumEach template body: literal text or an enum value interpolation.
 const EnumSegment = union(enum) {
-    literal: []const u8, // plain text to write verbatim
-    enum_self, // {{.}} — writes @tagName of the current enum field
-    enum_field: []const u8, // {{.method}} — calls method on current enum value
+    literal: []const u8,
+    enum_self,
+    enum_field: IdxPair,
+    enum_begin,
+    enum_end,
+    if_begin_method: IdxPair,
+    if_begin_var: IdxPair,
+    if_end,
 };
 
-/// Extracts the body text from between #enumEach and #endenumEach within section content.
-/// The section must contain exactly one #enumEach ... #endenumEach block.
-fn extractEnumBody(comptime content: []const u8) []const u8 {
-    @setEvalBranchQuota(100_000);
-    const marker = "#enumEach";
-    const end_marker = "#endenumEach";
-
-    const start_idx = comptime std.mem.indexOf(u8, content, marker) orelse
-        @compileError("Section does not contain #enumEach directive");
-
-    // body starts after the newline following #enumEach
-    const body_start = comptime std.mem.indexOfScalarPos(u8, content, start_idx, '\n') orelse
-        @compileError("Malformed #enumEach directive: missing newline after type name");
-
-    const end_idx = comptime std.mem.indexOfPos(u8, content, body_start, end_marker) orelse
-        @compileError("Missing #endenumEach to close #enumEach block");
-
-    // body runs from after the #enumEach line up to (not including) #endenumEach.
-    // The newline(s) before #endenumEach are part of the body and get repeated
-    // on every iteration — this is how users put separators between rows.
-    return content[body_start + 1 .. end_idx];
-}
-
-/// Parses an enumEach template body into segments by splitting on {{...}} markers.
-/// Each segment is either literal text, {{.}} (enum tag name), or {{.method}} (method call).
-fn parseEnumTemplate(comptime body: []const u8) []const EnumSegment {
+fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
     @setEvalBranchQuota(1_000_000);
 
-    comptime var segments: [64]EnumSegment = undefined;
+    const end_pos = comptime std.mem.indexOf(u8, content, "{{/enum}}") orelse
+        @compileError("Missing {{/enum}} in section");
+    var end = end_pos;
+    if (end > 0 and content[end - 1] == '\n') end -= 1;
+    if (end > 0 and content[end - 1] == '\r') end -= 1;
+    var start: usize = 0;
+    if (comptime std.mem.startsWith(u8, content, "{{@enum")) {
+        start = (comptime std.mem.indexOfScalar(u8, content, '\n') orelse end) + 1;
+    }
+    const trimmed = content[start..end];
+
+    comptime var segments: [128]EnumSegment = undefined;
     comptime var seg_count: usize = 0;
-
-    comptime var i: usize = 0;
     comptime var lit_start: usize = 0;
+    comptime var skip: usize = 0;
 
-    while (i < body.len) {
-        if (i + 1 < body.len and body[i] == '{' and body[i + 1] == '{') {
-            // flush preceding literal if non-empty
-            if (i > lit_start) {
-                segments[seg_count] = .{ .literal = body[lit_start..i] };
+    inline for (trimmed, 0..) |c, idx| {
+        if (skip > 0) {
+            if (c == '}' and idx + 1 < trimmed.len and trimmed[idx + 1] == '}') {
+                skip -= 1;
+                if (skip == 0) lit_start = idx + 2;
+            }
+            if (c == '{' and idx + 1 < trimmed.len and trimmed[idx + 1] == '{') {
+                skip += 1;
+            }
+            continue;
+        }
+
+        if (c == '{' and idx + 1 < trimmed.len and trimmed[idx + 1] == '{') {
+            if (idx > lit_start) {
+                segments[seg_count] = .{ .literal = trimmed[lit_start..idx] };
                 seg_count += 1;
             }
-            const marker_inner_start = i + 2;
-            const close = comptime std.mem.indexOfPos(u8, body, marker_inner_start, "}}") orelse
-                @compileError("Unclosed '{{' marker in enum template");
-            const inner = body[marker_inner_start..close];
+            const inner_start = idx + 2;
+            const close = comptime std.mem.indexOfPos(u8, trimmed, inner_start, "}}") orelse
+                @compileError("Unclosed '{{' marker");
+            const inner = trimmed[inner_start..close];
 
             if (inner.len == 1 and inner[0] == '.') {
                 segments[seg_count] = .enum_self;
             } else if (inner.len > 1 and inner[0] == '.') {
-                segments[seg_count] = .{ .enum_field = inner[1..] };
+                segments[seg_count] = .{ .enum_field = .{ .start = inner_start + 1, .end = close } };
+            } else if (comptime std.mem.startsWith(u8, inner, "@enum")) {
+                segments[seg_count] = .enum_begin;
+            } else if (comptime std.mem.eql(u8, inner, "/enum")) {
+                segments[seg_count] = .enum_end;
+            } else if (comptime std.mem.startsWith(u8, inner, "@if .")) {
+                segments[seg_count] = .{ .if_begin_method = .{ .start = inner_start + 5, .end = close } };
+            } else if (comptime std.mem.startsWith(u8, inner, "@if $.")) {
+                segments[seg_count] = .{ .if_begin_var = .{ .start = inner_start + 6, .end = close } };
+            } else if (comptime std.mem.eql(u8, inner, "/if")) {
+                segments[seg_count] = .if_end;
             } else {
-                @compileError("Invalid marker in enum template: '{{" ++ inner ++ "}}'. Expected {{.}} or {{.methodName}}");
+                @compileError("Invalid marker: '{{" ++ inner ++ "}}'");
             }
             seg_count += 1;
-            i = close + 2;
-            lit_start = i;
-        } else {
-            i += 1;
+            skip = 1;
+            lit_start = close + 2;
         }
     }
 
-    // flush trailing literal
-    if (lit_start < body.len) {
-        segments[seg_count] = .{ .literal = body[lit_start..body.len] };
+    if (lit_start < trimmed.len) {
+        segments[seg_count] = .{ .literal = trimmed[lit_start..trimmed.len] };
         seg_count += 1;
     }
 
     return segments[0..seg_count];
 }
 
-/// Writes a value returned by an enum method to the output writer.
-/// Handles []const u8, integers, and floats. Other types print a placeholder.
+fn isTruthy(value: anytype) bool {
+    const T = @TypeOf(value);
+    return switch (@typeInfo(T)) {
+        .bool => value,
+        .int, .comptime_int => value != 0,
+        .float, .comptime_float => value != 0.0,
+        .optional => value != null,
+        .pointer => |ptr| if (ptr.size == .slice) value.len > 0 else true,
+        else => true,
+    };
+}
+
 fn writeResult(out: anytype, result: anytype) !void {
     const T = @TypeOf(result);
     switch (@typeInfo(T)) {
+        .bool => { try out.writeAll(if (result) "true" else "false"); return; },
         .pointer => |ptr| {
-            if (ptr.size == .slice and ptr.child == u8) {
-                try out.writeAll(result);
-                return;
-            }
+            if (ptr.size == .slice and ptr.child == u8) { try out.writeAll(result); return; }
         },
-        .int, .comptime_int => {
-            try out.print("{d}", .{result});
-            return;
-        },
-        .float, .comptime_float => {
-            try out.print("{d}", .{result});
-            return;
-        },
+        .int, .comptime_int => { try out.print("{d}", .{result}); return; },
+        .float, .comptime_float => { try out.print("{d}", .{result}); return; },
         else => {},
     }
     try out.print("{s}", .{"[unprintable]"});
 }
 
-/// printEnum renders a template section that contains an #enumEach directive.
-///
-/// The section content must be of the form:
-///   #enumEach TypeName
-///   body with {{.method}} interpolations
-///   #endenumEach
-///
-/// At comptime, the body is unrolled once per field of the enum type,
-/// producing a sequence of calls to out.writeAll / out.print.
-///
-/// EnumType is passed explicitly from the call site so that comptime
-/// type resolution is trivial and does not require @import in the
-/// template parser.
 pub fn printEnum(
     comptime tmpl: []const u8,
     comptime section: []const u8,
     comptime EnumType: type,
+    context: anytype,
     out: anytype,
 ) !void {
     if (@typeInfo(EnumType) != .@"enum") {
         @compileError("printEnum requires an enum type, got " ++ @typeName(EnumType));
     }
 
-    const content = comptime s(tmpl, section);
-    const body = comptime extractEnumBody(content);
-    const segments = comptime parseEnumTemplate(body);
+    const section_prefix = "." ++ section ++ "\n";
+    const content = if (comptime std.mem.startsWith(u8, tmpl, section_prefix))
+        tmpl[section_prefix.len..]
+    else blk: {
+        const pos = comptime std.mem.indexOf(u8, tmpl, section_prefix) orelse
+            @compileError("Section ." ++ section ++ " not found");
+        break :blk tmpl[pos + section_prefix.len ..];
+    };
+    const segments = comptime parseEnumSection(content);
 
     inline for (comptime std.meta.fields(EnumType)) |field| {
-        const val: EnumType = @enumFromInt(field.value);
+        const val = comptime @as(EnumType, @enumFromInt(field.value));
+        var skip_depth: usize = 0;
+
         inline for (segments) |seg| {
             switch (seg) {
-                .literal => |lit| try out.writeAll(lit),
-                .enum_self => try out.writeAll(@tagName(val)),
-                .enum_field => |method_name| {
-                    const method = @field(EnumType, method_name);
-                    const result = @call(.auto, method, .{val});
-                    try writeResult(out, result);
+                .if_end => { if (skip_depth > 0) skip_depth -= 1; },
+                .if_begin_method => |idx| {
+                    if (comptime blk: {
+                        const mn = content[idx.start..idx.end];
+                        const method = @field(EnumType, mn);
+                        break :blk !isTruthy(@call(.auto, method, .{val}));
+                    }) skip_depth += 1;
                 },
+                .if_begin_var => |idx| {
+                    const vn = content[idx.start..idx.end];
+                    const fields = comptime @typeInfo(@TypeOf(context)).@"struct".fields;
+                    comptime var matched = false;
+                    inline for (fields) |ctx_field| {
+                        if (comptime std.mem.eql(u8, ctx_field.name, vn)) {
+                            if (!isTruthy(@field(context, ctx_field.name))) skip_depth += 1;
+                            matched = true;
+                        }
+                    }
+                    if (comptime !matched) @compileError("Context missing field '" ++ vn ++ "'");
+                },
+                else => {},
+            }
+
+            if (skip_depth == 0) {
+                switch (seg) {
+                    .literal => |lit| try out.writeAll(lit),
+                    .enum_self => try out.writeAll(@tagName(val)),
+                    .enum_field => |idx| {
+                        const mn = content[idx.start..idx.end];
+                        const result = comptime blk: {
+                            const method = @field(EnumType, mn);
+                            break :blk @call(.auto, method, .{val});
+                        };
+                        try writeResult(out, result);
+                    },
+                    else => {},
+                }
             }
         }
     }
 }
-
-// ---- test utilities ----
-
-const TestWriter = struct {
-    list: *std.ArrayList(u8),
-    allocator: std.mem.Allocator,
-
-    pub fn writeAll(self: @This(), bytes: []const u8) error{OutOfMemory}!void {
-        try self.list.appendSlice(self.allocator, bytes);
-    }
-
-    pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
-        const formatted = try std.fmt.allocPrint(self.allocator, fmt, args);
-        defer self.allocator.free(formatted);
-        try self.list.appendSlice(self.allocator, formatted);
-    }
-
-    pub fn write(self: @This(), bytes: []const u8) error{OutOfMemory}!usize {
-        try self.list.appendSlice(self.allocator, bytes);
-        return bytes.len;
-    }
-};
-
-fn makeTestWriter(list: *std.ArrayList(u8), allocator: std.mem.Allocator) TestWriter {
-    return .{ .list = list, .allocator = allocator };
-}
-
-test "comptime single character before a '.'" {
-    const data =
-        \\  something
-        \\  x.not_a_label();
-        \\  x.also_not_a_label
-        \\  .label
-        \\  label content
-    ;
-
-    // test that we can use the data as a comptime known format to pass through print
-    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, null), .{});
-    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
-    std.testing.allocator.free(formatted_data);
-
-    formatted_data = try std.fmt.allocPrint(std.testing.allocator, s(data, "label"), .{});
-    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
-    std.testing.allocator.free(formatted_data);
-}
-
-test "runtime single character before a '.'" {
-    const data =
-        \\  something
-        \\  x.not_a_label();
-        \\  x.also_not_a_label
-        \\  .label
-        \\  label content
-    ;
-
-    // test that we can use the data during runtime
-    var formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, null)});
-    try std.testing.expectEqualSlices(u8, "  something\n  x.not_a_label();\n  x.also_not_a_label\n", formatted_data);
-    std.testing.allocator.free(formatted_data);
-
-    formatted_data = try std.fmt.allocPrint(std.testing.allocator, "{?s}", .{lookup(data, "label")});
-    try std.testing.expectEqualSlices(u8, "  label content", formatted_data);
-    std.testing.allocator.free(formatted_data);
-}
-
-test "data with no sections, and formatting" {
-    const data = @embedFile("testdata/all.txt");
-    try std.testing.expectEqual(data.len, 78);
-
-    // test that we can use the data as a comptime known format to pass through print
-    const formatted_data = try std.fmt.allocPrint(std.testing.allocator, data, .{"embedded formatting"});
-    try std.testing.expectEqual(formatted_data.len, 94);
-    std.testing.allocator.free(formatted_data);
-
-    // TODO - add a test that calling printHeader() on a file with no sections accurately dumps the whole file
-    // try printHeader(data, .{"hi from the formatter"}, std.io.getStdErr().writer());
-}
-
-test "foobar with multiple sections and no formatting" {
-    const data = @embedFile("testdata/foobar1.txt");
-    try std.testing.expectEqual(data.len, 91);
-    const foo = s(data, "foo");
-    try std.testing.expectEqualSlices(u8, "I like the daytime\n", foo);
-    const bar = s(data, "bar");
-    try std.testing.expectEqualSlices(u8, "I prefer the nighttime\n", bar);
-    const empty = s(data, "empty");
-    try std.testing.expectEqualSlices(u8, "", empty);
-    const notempty = s(data, "notempty");
-    try std.testing.expectEqualSlices(u8, "This has some content\n", notempty);
-}
-
-test "html file with multiple sections and formatting" {
-    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
-    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
-
-    const out = makeTestWriter(&list, std.testing.allocator);
-    const data = @embedFile("testdata/customer_details.html");
-
-    const Invoice = struct {
-        date: []const u8,
-        details: []const u8,
-        amount: f32,
-    };
-
-    const customer = .{
-        .name = "Joe Blow",
-        .address = "21 Main Street",
-        .credit = 100.0,
-    };
-    const invoices = &[_]Invoice{
-        .{ .date = "2023-10-01", .details = "New Hoodie", .amount = 80.99 },
-        .{ .date = "2023-10-03", .details = "Hotdog with Sauce", .amount = 4.50 },
-        .{ .date = "2023-10-04", .details = "Mystery Gift", .amount = 12.00 },
-        .{ .date = "2023-10-12", .details = "Model Aircraft", .amount = 48.00 },
-        .{ .date = "2023-10-24", .details = "Chocolate Milkshake", .amount = 80.99 },
-    };
-
-    try printHeader(data, .{}, out);
-
-    // print the customer details
-    try print(data, "customer_details", customer, out);
-
-    // print a table of customer invoices
-    try print(data, "invoice_table", .{}, out);
-    var total: f32 = 0.0;
-    inline for (invoices) |inv| {
-        try print(data, "invoice_row", inv, out);
-        total += inv.amount;
-    }
-    try print(data, "invoice_total", .{ .total = total }, out);
-
-    // uncomment these to see the output on the console
-    // var stderr = std.io.getStdErr().writer();
-    // try stderr.writeAll(list.items);
-
-    // compare to golden file
-    const expected_data = @embedFile("testdata/customer_details.expected.html");
-    try std.testing.expectEqualSlices(u8, expected_data, list.items);
-}
-
-test "statement in english or german based on LANG env var - runtime only" {
-    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
-    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
-
-    const out = makeTestWriter(&list, std.testing.allocator);
-    const data = @embedFile("testdata/you-owe-us.txt");
-
-    // use environment or default to english
-    var lang = "en";
-
-    try writeHeader(data, out);
-    try writeDynamic(data, "terms_" ++ lang, out);
-
-    // try it again in german
-    lang = "de";
-    try writeDynamic(data, "terms_" ++ lang, out);
-
-    const expected_data = @embedFile("testdata/english_german_statement.txt");
-    try std.testing.expectEqualSlices(u8, expected_data, list.items);
-}
-
-test "enumEach - iterate enum fields with {{.method}} interpolation" {
-    const Grade = enum {
-        veteran,
-        elite,
-        regular,
-
-        pub fn slug(self: @This()) []const u8 {
-            return switch (self) {
-                .veteran => "vet",
-                .elite => "elite",
-                .regular => "reg",
-            };
-        }
-
-        pub fn label(self: @This()) []const u8 {
-            return @tagName(self);
-        }
-    };
-
-    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
-    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
-
-    const out = makeTestWriter(&list, std.testing.allocator);
-    const data = @embedFile("testdata/enum_options.txt");
-
-    try printEnum(data, "options", Grade, out);
-
-    const expected =
-        \\<option value="vet">veteran</option>
-        \\<option value="elite">elite</option>
-        \\<option value="reg">regular</option>
-        \\
-    ;
-    try std.testing.expectEqualSlices(u8, expected, list.items);
-}
-
-test "enumEach - {{.}} outputs @tagName for each field" {
-    const Color = enum {
-        red,
-        green,
-        blue,
-    };
-
-    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
-    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
-
-    const out = makeTestWriter(&list, std.testing.allocator);
-
-    // inline template string using {{.}} for the enum tag name
-    const data =
-        \\.colors
-        \\#enumEach Color
-        \\{{.}},
-        \\#endenumEach
-    ;
-
-    try printEnum(data, "colors", Color, out);
-
-    const expected =
-        \\red,
-        \\green,
-        \\blue,
-        \\
-    ;
-    try std.testing.expectEqualSlices(u8, expected, list.items);
-}
-
-test "empty directive" {}

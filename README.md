@@ -589,3 +589,7 @@ I prefer nighttime because its quieter
 also:
 
 - https://github.com/kristoff-it/ziggy ... static site generator that has some interesting templating possibilities
+
+## Experiment - new syntax for doing comptime evaluations
+
+

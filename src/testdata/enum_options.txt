@@ -1,4 +1,4 @@
 .options
-#enumEach Grade
+{{@enum Grade}}
 <option value="{{.slug}}">{{.label}}</option>
-#endenumEach
+{{/enum}}
