@@ -1,0 +1,4 @@
+.options
+#enumEach Grade
+<option value="{{.slug}}">{{.label}}</option>
+#endenumEach
