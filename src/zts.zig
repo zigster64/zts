@@ -217,10 +217,8 @@ fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
     comptime var seg_count: usize = 0;
     comptime var lit_start: usize = 0;
     comptime var skip: usize = 0;
-    comptime var done = false;
 
     inline for (content, 0..) |c, idx| {
-        if (done) break;
         if (skip > 0) {
             if (c == '}' and idx + 1 < content.len and content[idx + 1] == '}') {
                 skip -= 1;
@@ -250,7 +248,6 @@ fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
                 segments[seg_count] = .enum_begin;
             } else if (comptime std.mem.eql(u8, inner, "/enum")) {
                 segments[seg_count] = .enum_end;
-                done = true;
             } else if (comptime std.mem.startsWith(u8, inner, "@if eq . $.")) {
                 segments[seg_count] = .{ .if_eq_var = .{ .start = inner_start + 11, .end = close } };
             } else if (comptime std.mem.startsWith(u8, inner, "@if ne . $.")) {
@@ -270,7 +267,7 @@ fn parseEnumSection(comptime content: []const u8) []const EnumSegment {
         }
     }
 
-    if (!done and lit_start < content.len) {
+    if (lit_start < content.len) {
         segments[seg_count] = .{ .literal = content[lit_start..content.len] };
         seg_count += 1;
     }
@@ -325,11 +322,34 @@ pub fn printEnum(
     };
     const segments = comptime parseEnumSection(content);
 
+    // Find the boundaries of the enum repeat block.
+    const enum_begin_idx = comptime blk: {
+        for (segments, 0..) |seg, i| {
+            if (seg == .enum_begin) break :blk i;
+        }
+        @compileError("No {{@enum}} marker in section");
+    };
+    const enum_end_idx = comptime blk: {
+        for (segments, 0..) |seg, i| {
+            if (seg == .enum_end) break :blk i;
+        }
+        @compileError("No {{/enum}} marker in section");
+    };
+
+    // ── Prefix (once) ──────────────────────────────────────────
+    inline for (segments[0..enum_begin_idx]) |seg| {
+        switch (seg) {
+            .literal => |lit| try out.writeAll(lit),
+            else => {},
+        }
+    }
+
+    // ── Per-field loop ─────────────────────────────────────────
     inline for (comptime std.meta.fields(EnumType)) |field| {
         const val = comptime @as(EnumType, @enumFromInt(field.value));
         var skip_depth: usize = 0;
 
-        inline for (segments) |seg| {
+        inline for (segments[enum_begin_idx + 1 .. enum_end_idx]) |seg| {
             switch (seg) {
                 .if_end => { if (skip_depth > 0) skip_depth -= 1; },
                 .if_begin_method => |idx| {
@@ -393,6 +413,14 @@ pub fn printEnum(
                     else => {},
                 }
             }
+        }
+    }
+
+    // ── Suffix (once) ──────────────────────────────────────────
+    inline for (segments[enum_end_idx + 1 ..]) |seg| {
+        switch (seg) {
+            .literal => |lit| try out.writeAll(lit),
+            else => {},
         }
     }
 }
@@ -529,7 +557,7 @@ test "enumEach - {{.method}} interpolation with {{@enum}}" {
     const out = makeTestWriter(&list, std.testing.allocator);
     const data = @embedFile("testdata/enum_options.txt");
     try printEnum(data, "options", Grade, .{}, out);
-    const expected = "\n<option value=\"vet\">veteran</option>\n\n<option value=\"elite\">elite</option>\n\n<option value=\"reg\">regular</option>\n";
+    const expected = "\n<option value=\"vet\">veteran</option>\n\n<option value=\"elite\">elite</option>\n\n<option value=\"reg\">regular</option>\n\n";
     try std.testing.expectEqualSlices(u8, expected, list.items);
 }
 
@@ -545,7 +573,7 @@ test "enumEach - {{@if eq . $.var}}" {
     const Ctx = struct { active: Grade };
     const data = ".grades\n{{@enum Grade}}\n<option value=\"{{.slug}}\"{{@if eq . $.active}} selected{{/if}}>{{.label}}</option>\n{{/enum}}\n";
     try printEnum(data, "grades", Grade, Ctx{ .active = .elite }, out);
-    const expected = "\n<option value=\"vet\">veteran</option>\n\n<option value=\"elite\" selected>elite</option>\n\n<option value=\"reg\">regular</option>\n";
+    const expected = "\n<option value=\"vet\">veteran</option>\n\n<option value=\"elite\" selected>elite</option>\n\n<option value=\"reg\">regular</option>\n\n";
     try std.testing.expectEqualSlices(u8, expected, list.items);
 }
 
@@ -560,7 +588,7 @@ test "enumEach - {{@if ne . $.var}}" {
     const Ctx = struct { exclude: Grade };
     const data = ".items\n{{@enum Grade}}\n{{@if ne . $.exclude}}{{.label}},{{/if}}\n{{/enum}}\n";
     try printEnum(data, "items", Grade, Ctx{ .exclude = .elite }, out);
-    const expected = "\nveteran,\n\n\n\nregular,\n";
+    const expected = "\nveteran,\n\n\n\nregular,\n\n";
     try std.testing.expectEqualSlices(u8, expected, list.items);
 }
 
