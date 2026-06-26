@@ -312,14 +312,7 @@ pub fn printEnum(
         @compileError("printEnum requires an enum type, got " ++ @typeName(EnumType));
     }
 
-    const section_prefix = "." ++ section ++ "\n";
-    const content = if (comptime std.mem.startsWith(u8, tmpl, section_prefix))
-        tmpl[section_prefix.len..]
-    else blk: {
-        const pos = comptime std.mem.indexOf(u8, tmpl, section_prefix) orelse
-            @compileError("Section ." ++ section ++ " not found");
-        break :blk tmpl[pos + section_prefix.len ..];
-    };
+    const content = comptime s(tmpl, section);
     const segments = comptime parseEnumSection(content);
 
     // Find the boundaries of the enum repeat block.
