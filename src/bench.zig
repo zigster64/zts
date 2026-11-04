@@ -3,11 +3,8 @@ const zts = @import("zts.zig");
 
 pub fn main() !void {
     std.debug.print("Do 100k runs of passing data through HTML template\n", .{});
-    const NullWriter = struct {
-        pub fn writeAll(_: @This(), _: []const u8) !void {}
-        pub fn print(_: @This(), comptime _: []const u8, _: anytype) !void {}
-    };
-    const out = NullWriter{};
+    var discarding: std.Io.Writer.Discarding = .init(&.{});
+    const out = &discarding.writer;
 
     const tmpl = @embedFile("testdata/customer_details.html");
 

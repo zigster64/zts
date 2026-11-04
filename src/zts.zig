@@ -259,31 +259,9 @@ test "foobar with multiple sections and no formatting" {
 }
 
 test "html file with multiple sections and formatting" {
-    const ListWriter = struct {
-        list: *std.ArrayList(u8),
-        allocator: std.mem.Allocator,
-
-        pub fn writeAll(self: @This(), bytes: []const u8) error{OutOfMemory}!void {
-            try self.list.appendSlice(self.allocator, bytes);
-        }
-
-        pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
-            const formatted = try std.fmt.allocPrint(self.allocator, fmt, args);
-            defer self.allocator.free(formatted);
-            try self.list.appendSlice(self.allocator, formatted);
-        }
-
-        pub fn write(self: @This(), bytes: []const u8) error{OutOfMemory}!usize {
-            try self.list.appendSlice(self.allocator, bytes);
-            return bytes.len;
-        }
-    };
-
-    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
-    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
-
-    const out = ListWriter{ .list = &list, .allocator = std.testing.allocator };
+    var allocating: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer allocating.deinit();
+    const out = &allocating.writer;
     const data = @embedFile("testdata/customer_details.html");
 
     const Invoice = struct {
@@ -321,39 +299,17 @@ test "html file with multiple sections and formatting" {
 
     // uncomment these to see the output on the console
     // var stderr = std.io.getStdErr().writer();
-    // try stderr.writeAll(list.items);
+    // try stderr.writeAll(allocating.written());
 
     // compare to golden file
     const expected_data = @embedFile("testdata/customer_details.expected.html");
-    try std.testing.expectEqualSlices(u8, expected_data, list.items);
+    try std.testing.expectEqualSlices(u8, expected_data, allocating.written());
 }
 
 test "statement in english or german based on LANG env var - runtime only" {
-    const ListWriter = struct {
-        list: *std.ArrayList(u8),
-        allocator: std.mem.Allocator,
-
-        pub fn writeAll(self: @This(), bytes: []const u8) error{OutOfMemory}!void {
-            try self.list.appendSlice(self.allocator, bytes);
-        }
-
-        pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
-            const formatted = try std.fmt.allocPrint(self.allocator, fmt, args);
-            defer self.allocator.free(formatted);
-            try self.list.appendSlice(self.allocator, formatted);
-        }
-
-        pub fn write(self: @This(), bytes: []const u8) error{OutOfMemory}!usize {
-            try self.list.appendSlice(self.allocator, bytes);
-            return bytes.len;
-        }
-    };
-
-    var list: std.ArrayList(u8) = .{ .items = &.{}, .capacity = 0 };
-    list = try std.ArrayList(u8).initCapacity(std.testing.allocator, 0);
-    defer list.deinit(std.testing.allocator);
-
-    const out = ListWriter{ .list = &list, .allocator = std.testing.allocator };
+    var allocating: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer allocating.deinit();
+    const out = &allocating.writer;
     const data = @embedFile("testdata/you-owe-us.txt");
 
     // use environment or default to english
@@ -367,7 +323,7 @@ test "statement in english or german based on LANG env var - runtime only" {
     try writeDynamic(data, "terms_" ++ lang, out);
 
     const expected_data = @embedFile("testdata/english_german_statement.txt");
-    try std.testing.expectEqualSlices(u8, expected_data, list.items);
+    try std.testing.expectEqualSlices(u8, expected_data, allocating.written());
 }
 
 test "empty directive" {}
